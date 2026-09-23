@@ -25,10 +25,11 @@ from app.schemas.projects import (
 )
 from app.schemas.resources import ResourceRead
 from app.services.assignments import list_assigned_resources
+from app.services.group_icons import group_icon_url
 from app.services.groups import assign_root_group, maybe_delete_empty_group
 from app.services.projects import (
     delete_project_subtree,
-    effective_group_name,
+    effective_group,
     get_project_or_404,
     get_root,
     validate_parent_for_new_sub,
@@ -86,6 +87,7 @@ def _to_summary(
     if project.parent_id is not None:
         parent = db.get(Project, project.parent_id)
         parent_name = parent.name if parent else None
+    group = effective_group(db, project)
     return ProjectSummary(
         id=project.id,
         name=project.name,
@@ -94,7 +96,8 @@ def _to_summary(
         parent_name=parent_name,
         root_project_id=project.root_project_id or project.id,
         is_root=project.parent_id is None,
-        group_name=effective_group_name(db, project),
+        group_name=group.name if group else None,
+        group_icon_url=group_icon_url(group),
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
@@ -178,8 +181,7 @@ def create_root_project(
     db.add(project)
     db.flush()
     project.root_project_id = project.id
-    if payload.group_name:
-        assign_root_group(db, project, payload.group_name)
+    assign_root_group(db, project, payload.group_name)
     db.commit()
     db.refresh(project)
     response.headers["Location"] = f"/api/projects/{project.id}"
@@ -242,6 +244,7 @@ def get_project(
 
     children = db.scalars(select(Project).where(Project.parent_id == project.id)).all()
     assignments = list_assigned_resources(db, project.id)
+    group = effective_group(db, project)
 
     recent: list[ProjectStatusReport] = []
     if recent_status_count is not None:
@@ -256,7 +259,8 @@ def get_project(
         root_project_id=root.id,
         root_name=root.name,
         is_root=project.parent_id is None,
-        group_name=effective_group_name(db, project),
+        group_name=group.name if group else None,
+        group_icon_url=group_icon_url(group),
         resources=assignments,
         sub_projects=[
             SubProjectSummary(id=c.id, name=c.name, description=c.description) for c in children

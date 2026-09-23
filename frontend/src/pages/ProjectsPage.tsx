@@ -5,10 +5,24 @@ import {
   ProjectSummary,
   createRootProject,
   getProject,
+  groupIconSrc,
   listGroups,
   listProjects,
+  uploadGroupIcon,
 } from "../api";
 import { AppShell } from "../layout/AppShell";
+
+function GroupMark({ name, iconUrl }: { name: string; iconUrl: string | null }) {
+  const src = groupIconSrc(iconUrl);
+  if (src) {
+    return <img className="group-mark" src={src} alt={name} title={name} />;
+  }
+  return (
+    <span className="group-mark group-mark--empty" title={name} aria-hidden>
+      {name.trim().charAt(0).toUpperCase()}
+    </span>
+  );
+}
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
@@ -91,6 +105,26 @@ export function ProjectsPage() {
     }
   }
 
+  async function handleIconUpload(groupId: number, file: File) {
+    setError(null);
+    try {
+      await uploadGroupIcon(groupId, file);
+      const [nextGroups, data] = await Promise.all([
+        listGroups(),
+        listProjects({
+          q: search.trim() || undefined,
+          group_id: groupFilter || undefined,
+          roots_only: true,
+        }),
+      ]);
+      setGroups(nextGroups);
+      setProjects(data.items);
+      setTotal(data.total);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Icon upload failed");
+    }
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -99,7 +133,7 @@ export function ProjectsPage() {
       await createRootProject({
         name: form.name.trim(),
         description: form.description.trim() || null,
-        group_name: form.group_name.trim() || null,
+        group_name: form.group_name.trim(),
       });
       setModalOpen(false);
       setForm({ name: "", description: "", group_name: "" });
@@ -118,7 +152,7 @@ export function ProjectsPage() {
         <div>
           <h1>Projects</h1>
           <p className="subtitle">
-            Optional groups for root projects. Sub-projects inherit the root group when set.
+            Every root project belongs to a group. Sub-projects inherit that group.
           </p>
         </div>
         <button type="button" className="btn btn--primary" onClick={() => setModalOpen(true)}>
@@ -164,6 +198,29 @@ export function ProjectsPage() {
           </select>
         </div>
 
+        {groups.length > 0 && (
+          <ul className="group-icon-list">
+            {groups.map((group) => (
+              <li key={group.id} className="group-icon-list__item">
+                <GroupMark name={group.name} iconUrl={group.icon_url} />
+                <span>{group.name}</span>
+                <label className="btn btn--ghost btn--sm group-icon-list__upload">
+                  {group.icon_url ? "Change icon" : "Upload icon"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void handleIconUpload(group.id, file);
+                    }}
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+        )}
+
         {loading ? (
           <div className="skeleton-grid">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -182,9 +239,14 @@ export function ProjectsPage() {
           <ul className="resource-grid">
             {projects.map((p) => (
               <li key={p.id} className="resource-card project-card">
-                <h3 className="project-card__title">
-                  <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                </h3>
+                <div className="project-card__head">
+                  {p.group_name && (
+                    <GroupMark name={p.group_name} iconUrl={p.group_icon_url} />
+                  )}
+                  <h3 className="project-card__title">
+                    <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                  </h3>
+                </div>
                 <p className="resource-card__notes">
                   {p.description || "No description"}
                 </p>
@@ -275,9 +337,9 @@ export function ProjectsPage() {
                 />
               </label>
               <label>
-                Group (optional)
+                Group
                 <input
-                  placeholder="Leave empty for no group"
+                  required
                   value={form.group_name}
                   onChange={(e) => setForm({ ...form, group_name: e.target.value })}
                 />

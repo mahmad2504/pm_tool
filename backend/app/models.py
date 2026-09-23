@@ -40,6 +40,7 @@ class Group(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True, index=True)
+    icon_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     root_projects: Mapped[list["Project"]] = relationship(
         back_populates="group",

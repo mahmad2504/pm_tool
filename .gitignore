@@ -1,5 +1,6 @@
 backend/.venv/
 backend/pm.db
+backend/data/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/.pytest_cache/

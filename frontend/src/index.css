@@ -478,6 +478,59 @@ a {
   color: #f0c987;
 }
 
+.over-notice {
+  display: block;
+  width: 100%;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(240, 113, 120, 0.45);
+  background: rgba(240, 113, 120, 0.12);
+  color: #f0c987;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 600;
+}
+
+.over-notice:hover {
+  background: rgba(240, 113, 120, 0.2);
+}
+
+.over-notice__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow: auto;
+}
+
+.over-notice__list > li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.over-notice__list > li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.over-notice__person {
+  margin: 0 0 0.35rem;
+  font-weight: 600;
+}
+
+.over-notice__assignments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.over-notice__assignments li {
+  padding: 0.15rem 0;
+}
+
 .resource-assignments {
   list-style: none;
   margin: 0;
@@ -594,6 +647,17 @@ a {
   z-index: 100;
 }
 
+.project-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.project-group .group-pill {
+  margin-top: 0;
+}
+
 .group-pill {
   display: inline-block;
   margin-top: 0.35rem;
@@ -609,8 +673,48 @@ a {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 0.65rem;
+}
+
+.group-mark {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+  background: var(--bg);
+  flex: none;
+}
+
+.group-mark--empty {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.group-icon-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 0 1rem;
+  padding: 0;
+}
+
+.group-icon-list__item {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
-  justify-content: space-between;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.group-icon-list__upload input {
+  display: none;
 }
 
 .project-card__title {

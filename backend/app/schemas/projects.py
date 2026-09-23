@@ -15,7 +15,7 @@ def trim_optional_description(value: str | None) -> str | None:
 class ProjectCreateRoot(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    group_name: str | None = Field(default=None, max_length=255)
+    group_name: str = Field(min_length=1, max_length=255)
 
     @field_validator("name")
     @classmethod
@@ -27,8 +27,11 @@ class ProjectCreateRoot(BaseModel):
 
     @field_validator("group_name")
     @classmethod
-    def trim_group(cls, value: str | None) -> str | None:
-        return trim_optional_description(value)
+    def trim_group(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Cannot be blank")
+        return trimmed
 
     @field_validator("description")
     @classmethod
@@ -57,7 +60,7 @@ class ProjectCreateSub(BaseModel):
 class ProjectUpdateRoot(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
-    group_name: str | None = Field(default=None, max_length=255)
+    group_name: str = Field(min_length=1, max_length=255)
 
     @field_validator("name")
     @classmethod
@@ -69,8 +72,11 @@ class ProjectUpdateRoot(BaseModel):
 
     @field_validator("group_name")
     @classmethod
-    def trim_group(cls, value: str | None) -> str | None:
-        return trim_optional_description(value)
+    def trim_group(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Cannot be blank")
+        return trimmed
 
     @field_validator("description")
     @classmethod
@@ -96,7 +102,12 @@ class ProjectPatch(BaseModel):
     @field_validator("group_name")
     @classmethod
     def trim_group(cls, value: str | None) -> str | None:
-        return trim_optional_description(value)
+        if value is None:
+            raise ValueError("Cannot be blank")
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Cannot be blank")
+        return trimmed
 
     @field_validator("description")
     @classmethod
@@ -119,6 +130,7 @@ class ProjectSummary(BaseModel):
     root_project_id: int
     is_root: bool
     group_name: str | None
+    group_icon_url: str | None = None
     resource_count: int
     status_report_count: int
     sub_project_count: int
@@ -142,6 +154,7 @@ class ProjectDetail(BaseModel):
     root_name: str
     is_root: bool
     group_name: str | None
+    group_icon_url: str | None = None
     resources: list["AssignedResourceRead"]
     sub_projects: list[SubProjectSummary]
     recent_status_reports: list["StatusReportRead"] = []
@@ -206,3 +219,4 @@ class GroupRead(BaseModel):
     id: int
     name: str
     project_count: int
+    icon_url: str | None = None

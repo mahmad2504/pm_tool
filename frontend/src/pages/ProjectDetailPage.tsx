@@ -10,6 +10,7 @@ import {
   deleteStatusReport,
   detachResourceFromProject,
   getProject,
+  groupIconSrc,
   listResources,
   listStatusReports,
   patchProject,
@@ -19,6 +20,7 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { RoleBadge } from "../components/RoleBadge";
 import { AppShell } from "../layout/AppShell";
+import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import { projectListLabel } from "../utils/projectLabel";
 
 export function ProjectDetailPage() {
@@ -73,7 +75,7 @@ export function ProjectDetailPage() {
         description: editMeta.description.trim() || null,
       };
       if (project.is_root) {
-        payload.group_name = editMeta.group_name.trim() || null;
+        payload.group_name = editMeta.group_name.trim();
       }
       await patchProject(project.id, payload);
       await load();
@@ -118,6 +120,7 @@ export function ProjectDetailPage() {
     try {
       await attachResourceToProject(project.id, resourceId, pickUtilization);
       setPickerOpen(false);
+      notifyUtilizationChanged();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to assign resource");
@@ -132,6 +135,7 @@ export function ProjectDetailPage() {
     }
     try {
       await updateProjectResourceUtilization(project.id, resourceId, percent);
+      notifyUtilizationChanged();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update utilization");
@@ -142,6 +146,7 @@ export function ProjectDetailPage() {
     if (!project) return;
     try {
       await detachResourceFromProject(project.id, resourceId);
+      notifyUtilizationChanged();
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove resource");
@@ -164,6 +169,7 @@ export function ProjectDetailPage() {
     if (!project) return;
     try {
       await deleteProject(project.id);
+      notifyUtilizationChanged();
       navigate("/projects");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
@@ -194,7 +200,18 @@ export function ProjectDetailPage() {
             )}
           </p>
           <h1>{project.name}</h1>
-          {project.group_name && <span className="group-pill">{project.group_name}</span>}
+          {project.group_name && (
+            <p className="project-group">
+              {groupIconSrc(project.group_icon_url) && (
+                <img
+                  className="group-mark"
+                  src={groupIconSrc(project.group_icon_url) ?? undefined}
+                  alt=""
+                />
+              )}
+              <span className="group-pill">{project.group_name}</span>
+            </p>
+          )}
           {!project.is_root && (
             <p className="subtitle">
               Sub-project · root:{" "}
@@ -233,9 +250,9 @@ export function ProjectDetailPage() {
           </label>
           {project.is_root ? (
             <label>
-              Group (optional)
+              Group
               <input
-                placeholder="Leave empty for no group"
+                required
                 value={editMeta.group_name}
                 onChange={(e) => setEditMeta({ ...editMeta, group_name: e.target.value })}
               />

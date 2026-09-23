@@ -3,6 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Group, Project
+from app.services.group_icons import delete_icon_file
 
 
 def normalize_group_name(name: str) -> str:
@@ -68,4 +69,5 @@ def maybe_delete_empty_group(db: Session, group_id: int | None) -> None:
     if count_roots_in_group(db, group_id) == 0:
         group = db.get(Group, group_id)
         if group:
+            delete_icon_file(group.icon_filename)
             db.delete(group)

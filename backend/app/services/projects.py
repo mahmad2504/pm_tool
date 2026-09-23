@@ -20,11 +20,15 @@ def get_root(db: Session, project: Project) -> Project:
     return root
 
 
-def effective_group_name(db: Session, project: Project) -> str | None:
+def effective_group(db: Session, project: Project) -> Group | None:
     root = get_root(db, project)
     if root.group_id is None:
         return None
-    group = db.get(Group, root.group_id)
+    return db.get(Group, root.group_id)
+
+
+def effective_group_name(db: Session, project: Project) -> str | None:
+    group = effective_group(db, project)
     return group.name if group else None
 
 

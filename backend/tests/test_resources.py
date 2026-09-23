@@ -143,6 +143,46 @@ def test_resource_project_utilization(client, db_session):
     assert detail["project_assignments"][0]["utilization_percent"] == 40
 
 
+def test_over_utilized_resources(client, db_session):
+    from app.models import Project, ProjectResource
+
+    create_resource(client, email="over@example.com")
+    create_resource(client, name="At Cap", email="cap@example.com")
+    first = Project(name="Alpha", parent_id=None, group_id=None, root_project_id=1)
+    second = Project(name="Beta", parent_id=None, group_id=None, root_project_id=1)
+    db_session.add_all([first, second])
+    db_session.flush()
+    first.root_project_id = first.id
+    second.root_project_id = second.id
+    db_session.add_all(
+        [
+            ProjectResource(project_id=first.id, resource_id=1, utilization_percent=60),
+            ProjectResource(project_id=second.id, resource_id=1, utilization_percent=50),
+            ProjectResource(project_id=first.id, resource_id=2, utilization_percent=100),
+        ]
+    )
+    db_session.commit()
+
+    over = client.get("/api/resources", params={"over_utilized": True}).json()
+    assert over["total"] == 1
+    assert over["items"][0]["email"] == "over@example.com"
+    assert over["items"][0]["total_utilization_percent"] == 110
+
+    from sqlalchemy import select
+
+    link = db_session.scalars(
+        select(ProjectResource).where(
+            ProjectResource.resource_id == 1,
+            ProjectResource.project_id == second.id,
+        )
+    ).one()
+    link.utilization_percent = 40
+    db_session.commit()
+
+    cleared = client.get("/api/resources", params={"over_utilized": True}).json()
+    assert cleared["total"] == 0
+
+
 def test_validation_errors(client):
     bad = client.post(
         "/api/resources",

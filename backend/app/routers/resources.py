@@ -66,6 +66,7 @@ def list_resources(
     role: ResourceRole | None = None,
     q: str | None = None,
     project_id: int | None = None,
+    over_utilized: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ResourceListResponse:
@@ -83,6 +84,13 @@ def list_resources(
             ProjectResource.project_id == project_id
         )
         filters.append(Resource.id.in_(assigned_ids))
+    if over_utilized:
+        over_ids = (
+            select(ProjectResource.resource_id)
+            .group_by(ProjectResource.resource_id)
+            .having(func.sum(ProjectResource.utilization_percent) > 100)
+        )
+        filters.append(Resource.id.in_(over_ids))
 
     count_stmt = select(func.count()).select_from(Resource)
     list_stmt = select(Resource).order_by(Resource.created_at.desc(), Resource.id.desc())

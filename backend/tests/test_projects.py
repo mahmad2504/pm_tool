@@ -11,14 +11,17 @@ def create_root(client, **overrides):
     return client.post("/api/projects", json=payload)
 
 
-def test_create_root_without_group(client):
+def test_create_root_requires_group(client):
     resp = client.post(
         "/api/projects",
         json={"name": "Ungrouped", "description": "No group"},
     )
-    assert resp.status_code == 201
-    body = resp.json()
-    assert body["group_name"] is None
+    assert resp.status_code == 422
+    blank = client.post(
+        "/api/projects",
+        json={"name": "Ungrouped", "group_name": "   "},
+    )
+    assert blank.status_code == 422
     assert client.get("/api/groups").json() == []
 
 
@@ -196,3 +199,43 @@ def test_status_reports_limit(client):
         params={"recent_status_count": 2},
     ).json()
     assert len(detail["recent_status_reports"]) == 2
+
+
+def test_group_icon_on_project_tile(client):
+    from app.services.group_icons import ICON_DIR
+
+    root = create_root(client, group_name="Altera").json()
+    group = client.get("/api/groups").json()[0]
+    assert group["icon_url"] is None
+
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01"
+        b"\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+        b"\x00\x00\x00\nIDATx\x9cc\x00\x01\x00\x00\x05\x00\x01\r\n-\xb4"
+        b"\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    uploaded = client.post(
+        f"/api/groups/{group['id']}/icon",
+        files={"file": ("altera.png", png, "image/png")},
+    )
+    assert uploaded.status_code == 200
+    filename = uploaded.json()["icon_url"].split("v=", 1)[1]
+    icon_path = ICON_DIR / filename
+
+    icon = client.get(f"/api/groups/{group['id']}/icon")
+    assert icon.status_code == 200
+    assert icon.content == png
+
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    match = next(item for item in listed["items"] if item["id"] == root["id"])
+    assert match["group_name"] == "Altera"
+    assert match["group_icon_url"]
+
+    rejected = client.post(
+        f"/api/groups/{group['id']}/icon",
+        files={"file": ("notes.txt", b"hello", "text/plain")},
+    )
+    assert rejected.status_code == 400
+
+    assert client.delete(f"/api/projects/{root['id']}").status_code == 204
+    assert not icon_path.exists()

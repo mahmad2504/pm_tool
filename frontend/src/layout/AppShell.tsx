@@ -1,5 +1,6 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
+import { OverUtilizationNotice } from "../components/OverUtilizationNotice";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -39,7 +40,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           API documentation →
         </a>
       </aside>
-      <main className="main">{children}</main>
+      <main className="main">
+        <OverUtilizationNotice />
+        {children}
+      </main>
     </div>
   );
 }

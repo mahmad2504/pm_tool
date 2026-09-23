@@ -41,14 +41,14 @@ SQLite database file: `backend/pm.db`
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/api/projects` | List (`q`, `group_id`, `parent_id`, `roots_only`, pagination) |
-| POST | `/api/projects` | Create **root** project (`group_name` optional) |
+| POST | `/api/projects` | Create **root** project (`group_name` required) |
 | POST | `/api/projects/{id}/sub-projects` | Create sub-project (inherits root group) |
 | GET/PATCH/DELETE | `/api/projects/{id}` | Detail / update / delete subtree |
 | POST/PATCH/DELETE | `/api/projects/{id}/resources` | Assign (with `utilization_percent`), update utilization, remove |
 | GET/POST/PATCH/DELETE | `/api/projects/{id}/status-reports` | Status reports (`?limit=2` for recent) |
 | GET | `/api/groups` | Groups (auto-created; removed when empty) |
 
-**Groups** are optional and apply only to **root** projects. Sub-projects inherit the root’s group when set and **cannot** have their own sub-projects (one level only). Search `q` matches project name, description, or group name.
+**Groups** are required and apply only to **root** projects. Sub-projects inherit the root’s group and **cannot** have their own sub-projects (one level only). Each group can have an icon (`POST /api/groups/{id}/icon`, PNG, JPEG, WEBP, or GIF) shown on its project tiles. Search `q` matches project name, description, or group name.
 
 ### CSV import (resources)
 

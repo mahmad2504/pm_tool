@@ -77,11 +77,15 @@ export function listResources(params?: {
   q?: string;
   role?: ResourceRole;
   project_id?: number;
+  limit?: number;
+  over_utilized?: boolean;
 }): Promise<ResourceListResponse> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.role) search.set("role", params.role);
   if (params?.project_id) search.set("project_id", String(params.project_id));
+  if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.over_utilized) search.set("over_utilized", "true");
   const query = search.toString();
   return request(`/api/resources${query ? `?${query}` : ""}`);
 }
@@ -131,6 +135,7 @@ export interface GroupItem {
   id: number;
   name: string;
   project_count: number;
+  icon_url: string | null;
 }
 
 export interface SubProjectSummary {
@@ -148,6 +153,7 @@ export interface ProjectSummary {
   root_project_id: number;
   is_root: boolean;
   group_name: string | null;
+  group_icon_url: string | null;
   resource_count: number;
   status_report_count: number;
   sub_project_count: number;
@@ -174,6 +180,7 @@ export interface ProjectDetail {
   root_name: string;
   is_root: boolean;
   group_name: string | null;
+  group_icon_url: string | null;
   resources: AssignedResource[];
   sub_projects: SubProjectSummary[];
   recent_status_reports: StatusReport[];
@@ -183,6 +190,24 @@ export interface ProjectDetail {
 
 export function listGroups(): Promise<GroupItem[]> {
   return request("/api/groups");
+}
+
+export function groupIconSrc(iconUrl: string | null | undefined): string | null {
+  if (!iconUrl) return null;
+  return `${API_BASE}${iconUrl}`;
+}
+
+export async function uploadGroupIcon(groupId: number, file: File): Promise<GroupItem> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch(`${API_BASE}/api/groups/${groupId}/icon`, {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  return response.json();
 }
 
 export function listProjects(params?: {
@@ -215,7 +240,7 @@ export function getProject(
 export function createRootProject(data: {
   name: string;
   description?: string | null;
-  group_name?: string | null;
+  group_name: string;
 }): Promise<ProjectSummary> {
   return request("/api/projects", {
     method: "POST",
