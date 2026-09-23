@@ -9,7 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Resource, utc_now
+from app.models import ProjectResource, Resource, utc_now
+from app.services.projects import get_project_or_404
 from app.roles import ResourceRole, roles_for_api
 from app.schemas import (
     CsvRowInput,
@@ -19,7 +20,9 @@ from app.schemas import (
     ResourcePatch,
     ResourceRead,
     ResourceUpdate,
+    ResourceWithUtilization,
 )
+from app.services.resource_assignments import assignments_by_resource_ids, total_utilization
 
 router = APIRouter(prefix="/api/resources", tags=["resources"])
 
@@ -42,7 +45,14 @@ def email_in_use(db: Session, email: str, exclude_id: int | None = None) -> bool
     return db.scalar(stmt) is not None
 
 
-def apply_resource_fields(resource: Resource, *, name: str, role: ResourceRole, email: str, notes: str | None) -> None:
+def apply_resource_fields(
+    resource: Resource,
+    *,
+    name: str,
+    role: ResourceRole,
+    email: str,
+    notes: str | None,
+) -> None:
     resource.name = name
     resource.role = role.value
     resource.email = email
@@ -55,15 +65,24 @@ def list_resources(
     db: DbSession,
     role: ResourceRole | None = None,
     q: str | None = None,
+    project_id: int | None = None,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ResourceListResponse:
+    if project_id is not None:
+        get_project_or_404(db, project_id)
+
     filters = []
     if role is not None:
         filters.append(Resource.role == role.value)
     if q:
         pattern = f"%{q.strip()}%"
         filters.append(or_(Resource.name.ilike(pattern), Resource.email.ilike(pattern)))
+    if project_id is not None:
+        assigned_ids = select(ProjectResource.resource_id).where(
+            ProjectResource.project_id == project_id
+        )
+        filters.append(Resource.id.in_(assigned_ids))
 
     count_stmt = select(func.count()).select_from(Resource)
     list_stmt = select(Resource).order_by(Resource.created_at.desc(), Resource.id.desc())
@@ -73,7 +92,16 @@ def list_resources(
 
     total = db.scalar(count_stmt) or 0
     items = db.scalars(list_stmt.offset(offset).limit(limit)).all()
-    return ResourceListResponse(items=items, total=total)
+    assignment_map = assignments_by_resource_ids(db, [r.id for r in items])
+    enriched = [
+        ResourceWithUtilization(
+            **ResourceRead.model_validate(r).model_dump(),
+            total_utilization_percent=total_utilization(assignment_map.get(r.id, [])),
+            project_assignments=assignment_map.get(r.id, []),
+        )
+        for r in items
+    ]
+    return ResourceListResponse(items=enriched, total=total)
 
 
 @router.get("/import/template", response_class=PlainTextResponse)
@@ -165,9 +193,15 @@ async def import_resources(db: DbSession, file: UploadFile = File(...)) -> Impor
     return ImportResult(created=created, skipped=skipped, errors=errors)
 
 
-@router.get("/{resource_id}", response_model=ResourceRead)
-def get_resource(resource_id: int, db: DbSession) -> Resource:
-    return get_resource_or_404(db, resource_id)
+@router.get("/{resource_id}", response_model=ResourceWithUtilization)
+def get_resource(resource_id: int, db: DbSession) -> ResourceWithUtilization:
+    resource = get_resource_or_404(db, resource_id)
+    assignments = assignments_by_resource_ids(db, [resource.id]).get(resource.id, [])
+    return ResourceWithUtilization(
+        **ResourceRead.model_validate(resource).model_dump(),
+        total_utilization_percent=total_utilization(assignments),
+        project_assignments=assignments,
+    )
 
 
 @router.post("", response_model=ResourceRead, status_code=status.HTTP_201_CREATED)

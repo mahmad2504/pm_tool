@@ -82,8 +82,21 @@ class ResourceRead(ResourceBase):
     updated_at: datetime
 
 
+class ResourceProjectAssignment(BaseModel):
+    project_id: int
+    project_name: str
+    parent_name: str | None = None
+    group_name: str | None
+    utilization_percent: int = Field(ge=0, le=100)
+
+
+class ResourceWithUtilization(ResourceRead):
+    total_utilization_percent: int = Field(ge=0)
+    project_assignments: list[ResourceProjectAssignment] = []
+
+
 class ResourceListResponse(BaseModel):
-    items: list[ResourceRead]
+    items: list[ResourceWithUtilization]
     total: int
 
 
@@ -111,7 +124,11 @@ class CsvRowInput(BaseModel):
 
     @classmethod
     def from_csv_fields(
-        cls, name: str, role_raw: str, email: str, notes: str
+        cls,
+        name: str,
+        role_raw: str,
+        email: str,
+        notes: str,
     ) -> "CsvRowInput":
         if not name.strip():
             raise ValueError("Name is required")

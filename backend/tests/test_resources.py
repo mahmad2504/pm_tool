@@ -96,6 +96,53 @@ def test_duplicate_email_conflict(client):
     assert dup.status_code == 409
 
 
+def test_list_resources_by_project(client, db_session):
+    from app.models import Project, ProjectResource
+
+    create_resource(client, email="onproject@example.com")
+    create_resource(client, name="Other", email="other@example.com")
+    project = Project(name="FilterProj", parent_id=None, group_id=None, root_project_id=1)
+    db_session.add(project)
+    db_session.flush()
+    project.root_project_id = project.id
+    db_session.add(
+        ProjectResource(project_id=project.id, resource_id=1, utilization_percent=25)
+    )
+    db_session.commit()
+
+    filtered = client.get("/api/resources", params={"project_id": project.id}).json()
+    assert filtered["total"] == 1
+    assert filtered["items"][0]["email"] == "onproject@example.com"
+
+
+def test_resource_project_utilization(client, db_session):
+    from app.models import Group, Project, ProjectResource
+
+    create_resource(client, email="util@example.com")
+    group = Group(name="Eng")
+    db_session.add(group)
+    db_session.flush()
+    project = Project(
+        name="Apollo",
+        parent_id=None,
+        group_id=group.id,
+        root_project_id=1,
+    )
+    db_session.add(project)
+    db_session.flush()
+    project.root_project_id = project.id
+    db_session.add(
+        ProjectResource(project_id=project.id, resource_id=1, utilization_percent=40)
+    )
+    db_session.commit()
+
+    detail = client.get("/api/resources/1").json()
+    assert detail["total_utilization_percent"] == 40
+    assert len(detail["project_assignments"]) == 1
+    assert detail["project_assignments"][0]["project_name"] == "Apollo"
+    assert detail["project_assignments"][0]["utilization_percent"] == 40
+
+
 def test_validation_errors(client):
     bad = client.post(
         "/api/resources",

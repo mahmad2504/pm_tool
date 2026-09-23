@@ -1,6 +1,6 @@
-# PM Tool — Resource management (increment 1)
+# PM Tool
 
-People resources (name, role, email, notes) with a **FastAPI REST API** and a **React** UI. No authentication yet.
+People **resources** and **projects** (groups, sub-projects, assignments, status reports) with a **FastAPI REST API** and **React** UI. No authentication yet.
 
 ## Prerequisites
 
@@ -26,8 +26,8 @@ SQLite database file: `backend/pm.db`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/api/resources` | List (`role`, `q`, `limit`, `offset`) |
-| GET | `/api/resources/{id}` | Get one |
+| GET | `/api/resources` | List (`role`, `q`, `project_id`, `limit`, `offset`) |
+| GET | `/api/resources/{id}` | Get one (includes project assignments and total utilization) |
 | POST | `/api/resources` | Create |
 | PUT | `/api/resources/{id}` | Full update |
 | PATCH | `/api/resources/{id}` | Partial update |
@@ -36,9 +36,25 @@ SQLite database file: `backend/pm.db`
 | POST | `/api/resources/import` | CSV bulk import (`file`) |
 | GET | `/api/resources/import/template` | CSV template |
 
-### CSV import
+### Projects
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/projects` | List (`q`, `group_id`, `parent_id`, `roots_only`, pagination) |
+| POST | `/api/projects` | Create **root** project (`group_name` optional) |
+| POST | `/api/projects/{id}/sub-projects` | Create sub-project (inherits root group) |
+| GET/PATCH/DELETE | `/api/projects/{id}` | Detail / update / delete subtree |
+| POST/PATCH/DELETE | `/api/projects/{id}/resources` | Assign (with `utilization_percent`), update utilization, remove |
+| GET/POST/PATCH/DELETE | `/api/projects/{id}/status-reports` | Status reports (`?limit=2` for recent) |
+| GET | `/api/groups` | Groups (auto-created; removed when empty) |
+
+**Groups** are optional and apply only to **root** projects. Sub-projects inherit the root’s group when set and **cannot** have their own sub-projects (one level only). Search `q` matches project name, description, or group name.
+
+### CSV import (resources)
 
 Columns: `name`, `role`, `email`, `notes`
+
+**Utilization** is set per project when assigning a person (`utilization_percent` 0–100 on `POST/PATCH .../resources`).
 
 Role may be a code (`software_engineer`, `hardware_engineer`, `lead`) or label (`Software engineer`, etc.).
 
