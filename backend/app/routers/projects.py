@@ -349,6 +349,7 @@ def attach_resource(
     )
     if existing:
         existing.utilization_percent = payload.utilization_percent
+        existing.project_role = payload.project_role.value
         touch_project(db, project)
         db.commit()
         response.status_code = status.HTTP_200_OK
@@ -359,6 +360,7 @@ def attach_resource(
             project_id=project.id,
             resource_id=resource.id,
             utilization_percent=payload.utilization_percent,
+            project_role=payload.project_role.value,
         )
     )
     touch_project(db, project)
@@ -380,12 +382,16 @@ def update_project_resource(
     resource = db.get(Resource, resource_id)
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found")
-    link.utilization_percent = payload.utilization_percent
+    if payload.utilization_percent is not None:
+        link.utilization_percent = payload.utilization_percent
+    if payload.project_role is not None:
+        link.project_role = payload.project_role.value
     touch_project(db, project)
     db.commit()
     return AssignedResourceRead(
         resource=ResourceRead.model_validate(resource),
         utilization_percent=link.utilization_percent,
+        project_role=link.project_role,
     )
 
 

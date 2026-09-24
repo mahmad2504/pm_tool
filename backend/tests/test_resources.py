@@ -153,6 +153,7 @@ def test_resource_project_utilization(client, db_session):
     assert len(detail["project_assignments"]) == 1
     assert detail["project_assignments"][0]["project_name"] == "Apollo"
     assert detail["project_assignments"][0]["utilization_percent"] == 40
+    assert detail["project_assignments"][0]["project_role"] == "member"
 
 
 def test_over_utilized_resources(client, db_session):
@@ -237,3 +238,18 @@ def test_roles_endpoint(client):
     assert response.status_code == 200
     codes = {item["code"] for item in response.json()}
     assert codes == {"software_engineer", "hardware_engineer", "lead"}
+
+
+def test_project_roles_endpoint(client):
+    response = client.get("/api/project-roles")
+    assert response.status_code == 200
+    codes = [item["code"] for item in response.json()]
+    assert codes == [
+        "member",
+        "lead",
+        "director",
+        "dv_engineer",
+        "rtl_engineer",
+        "software_engineer",
+        "firmware_engineer",
+    ]

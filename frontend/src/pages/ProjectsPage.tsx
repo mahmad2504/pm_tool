@@ -2,13 +2,18 @@ import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   GroupItem,
+  projectRoleLabel,
   ProjectSummary,
+  StatusReport,
   createRootProject,
+  createStatusReport,
   getProject,
   groupIconSrc,
   listGroups,
   listProjects,
+  listStatusReports,
   updateGroup,
+  updateStatusReport,
   uploadGroupIcon,
 } from "../api";
 import { AppShell } from "../layout/AppShell";
@@ -63,10 +68,23 @@ export function ProjectsPage() {
   const [error, setError] = useState<string | null>(null);
   const [peopleTarget, setPeopleTarget] = useState<ProjectSummary | null>(null);
   const [peopleRows, setPeopleRows] = useState<
-    { key: string; projectName: string; resourceName: string; utilization: number }[]
+    {
+      key: string;
+      projectName: string;
+      resourceName: string;
+      roleLabel: string;
+      utilization: number;
+    }[]
   >([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
+  const [reportTarget, setReportTarget] = useState<ProjectSummary | null>(null);
+  const [latestReport, setLatestReport] = useState<StatusReport | null>(null);
+  const [reportBody, setReportBody] = useState("");
+  const [newReportBody, setNewReportBody] = useState("");
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState<string | null>(null);
+  const [reportSaving, setReportSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -127,6 +145,7 @@ export function ProjectsPage() {
             key: `${detail.id}-${assignment.resource.id}`,
             projectName: detail.name,
             resourceName: assignment.resource.name,
+            roleLabel: projectRoleLabel(assignment.project_role),
             utilization: assignment.utilization_percent,
           })),
         ),
@@ -135,6 +154,66 @@ export function ProjectsPage() {
       setPeopleError(err instanceof Error ? err.message : "Failed to load people");
     } finally {
       setPeopleLoading(false);
+    }
+  }
+
+  async function openLastReport(project: ProjectSummary) {
+    setReportTarget(project);
+    setLatestReport(null);
+    setReportBody("");
+    setNewReportBody("");
+    setReportError(null);
+    setReportLoading(true);
+    try {
+      const data = await listStatusReports(project.id, 1);
+      const latest = data.items[0];
+      if (!latest) {
+        setReportError("No report yet.");
+        return;
+      }
+      setLatestReport(latest);
+      setReportBody(latest.body);
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to load the report");
+    } finally {
+      setReportLoading(false);
+    }
+  }
+
+  async function saveLastReport(event: FormEvent) {
+    event.preventDefault();
+    if (!reportTarget || !latestReport) return;
+    const body = reportBody.trim();
+    if (!body) return;
+    setReportSaving(true);
+    setReportError(null);
+    try {
+      await updateStatusReport(reportTarget.id, latestReport.id, body);
+      setReportTarget(null);
+      await load();
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to save the report");
+    } finally {
+      setReportSaving(false);
+    }
+  }
+
+  async function addReport(event: FormEvent) {
+    event.preventDefault();
+    if (!reportTarget) return;
+    const body = newReportBody.trim();
+    if (!body) return;
+    setReportSaving(true);
+    setReportError(null);
+    try {
+      await createStatusReport(reportTarget.id, body);
+      setNewReportBody("");
+      setReportTarget(null);
+      await load();
+    } catch (err) {
+      setReportError(err instanceof Error ? err.message : "Failed to add the report");
+    } finally {
+      setReportSaving(false);
     }
   }
 
@@ -304,6 +383,22 @@ export function ProjectsPage() {
                   <h3 className="project-card__title">
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
                   </h3>
+                  {p.status_report_count > 0 && (
+                    <button
+                      type="button"
+                      className="project-card__report"
+                      aria-label="Last report"
+                      onClick={() => void openLastReport(p)}
+                    >
+                      <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                        <path d="M14 2v6h6" />
+                        <path d="M16 13H8" />
+                        <path d="M16 17H8" />
+                        <path d="M10 9H8" />
+                      </svg>
+                    </button>
+                  )}
                 </div>
                 <p className="project-card__description">
                   {p.description || "No description"}
@@ -324,13 +419,17 @@ export function ProjectsPage() {
                   <button
                     type="button"
                     className="project-card__people"
+                    aria-label={`${p.resource_count} people`}
                     onClick={() => void openPeople(p)}
                   >
-                    {p.resource_count} people
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                      <circle cx="9" cy="7" r="4" />
+                      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                    </svg>
+                    <span>{p.resource_count}</span>
                   </button>
-                  {p.status_report_count > 0 && (
-                    <> · {p.status_report_count} reports</>
-                  )}
                 </p>
                 <Link className="btn btn--ghost btn--sm" to={`/projects/${p.id}`}>
                   Open →
@@ -432,10 +531,83 @@ export function ProjectsPage() {
               <ul className="people-dialog__list">
                 {peopleRows.map((row) => (
                   <li key={row.key}>
-                    {row.projectName} -&gt; {row.resourceName} -&gt; {row.utilization}%
+                    {row.projectName} -&gt; {row.resourceName} -&gt; {row.roleLabel} -&gt;{" "}
+                    {row.utilization}%
                   </li>
                 ))}
               </ul>
+            )}
+          </div>
+        </div>
+      )}
+
+      {reportTarget && (
+        <div className="modal-backdrop" onClick={() => setReportTarget(null)} role="presentation">
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="last-report-title"
+          >
+            <header className="modal__header">
+              <h2 id="last-report-title">Last report</h2>
+              <button type="button" className="icon-btn" onClick={() => setReportTarget(null)}>
+                ×
+              </button>
+            </header>
+            <p className="modal__message">{reportTarget.name}</p>
+            {reportLoading && <p className="modal__message">Loading…</p>}
+            {reportError && <p className="modal__message">{reportError}</p>}
+            {!reportLoading && latestReport && (
+              <form className="modal__form" onSubmit={(event) => void saveLastReport(event)}>
+                <p className="project-card__updated">
+                  Submitted{" "}
+                  <time dateTime={latestReport.created_at}>{formatUpdated(latestReport.created_at)}</time>
+                </p>
+                <label>
+                  Report
+                  <textarea
+                    required
+                    rows={6}
+                    value={reportBody}
+                    onChange={(event) => setReportBody(event.target.value)}
+                  />
+                </label>
+                <footer className="modal__footer">
+                  <button type="submit" className="btn btn--primary" disabled={reportSaving || !reportBody.trim()}>
+                    {reportSaving ? "Saving…" : "Save"}
+                  </button>
+                </footer>
+              </form>
+            )}
+            {!reportLoading && (
+              <form
+                className="modal__form report-dialog__new"
+                onSubmit={(event) => void addReport(event)}
+              >
+                <label>
+                  New report
+                  <textarea
+                    rows={4}
+                    value={newReportBody}
+                    onChange={(event) => setNewReportBody(event.target.value)}
+                    placeholder="Write a new status report…"
+                  />
+                </label>
+                <footer className="modal__footer">
+                  <button type="button" className="btn btn--ghost" onClick={() => setReportTarget(null)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn--secondary"
+                    disabled={reportSaving || !newReportBody.trim()}
+                  >
+                    {reportSaving ? "Saving…" : "Add report"}
+                  </button>
+                </footer>
+              </form>
             )}
           </div>
         </div>

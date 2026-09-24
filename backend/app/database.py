@@ -49,6 +49,13 @@ def run_sqlite_migrations() -> None:
                         "INTEGER NOT NULL DEFAULT 100"
                     )
                 )
+        if "project_role" not in pr_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_resources ADD COLUMN project_role "
+                    "VARCHAR(64) NOT NULL DEFAULT 'member'"
+                )
+            )
 
 
 def get_db() -> Generator:

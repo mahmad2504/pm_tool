@@ -1,8 +1,11 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  PROJECT_ROLES,
   ProjectDetail,
+  ProjectRole,
   Resource,
+  StatusReport,
   attachResourceToProject,
   createStatusReport,
   createSubProject,
@@ -14,6 +17,7 @@ import {
   listAllResources,
   listStatusReports,
   patchProject,
+  updateProjectResourceRole,
   updateProjectResourceUtilization,
   updateStatusReport,
 } from "../api";
@@ -23,17 +27,20 @@ import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import { projectListLabel } from "../utils/projectLabel";
 
+const REPORT_PAGE_SIZE = 5;
+
 export function ProjectDetailPage() {
   const { id } = useParams();
   const projectId = Number(id);
   const navigate = useNavigate();
 
   const [project, setProject] = useState<ProjectDetail | null>(null);
-  const [allReports, setAllReports] = useState(false);
   const [reports, setReports] = useState<{ items: ProjectDetail["recent_status_reports"]; total: number }>({
     items: [],
     total: 0,
   });
+  const [reportPage, setReportPage] = useState(0);
+  const [openReport, setOpenReport] = useState<StatusReport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editMeta, setEditMeta] = useState({ name: "", description: "", group_name: "" });
   const [subForm, setSubForm] = useState({ name: "", description: "" });
@@ -42,6 +49,7 @@ export function ProjectDetailPage() {
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
   const [resourceSearch, setResourceSearch] = useState("");
   const [pickUtilization, setPickUtilization] = useState(100);
+  const [pickRole, setPickRole] = useState<ProjectRole>("member");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const pickerRequest = useRef(0);
 
@@ -56,12 +64,21 @@ export function ProjectDetailPage() {
         description: detail.description ?? "",
         group_name: detail.group_name ?? "",
       });
-      const rep = await listStatusReports(projectId, allReports ? undefined : 2);
+      const rep = await listStatusReports(
+        projectId,
+        REPORT_PAGE_SIZE,
+        reportPage * REPORT_PAGE_SIZE,
+      );
+      const lastPage = Math.max(0, Math.ceil(rep.total / REPORT_PAGE_SIZE) - 1);
+      if (reportPage > lastPage) {
+        setReportPage(lastPage);
+        return;
+      }
       setReports({ items: rep.items, total: rep.total });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load project");
     }
-  }, [projectId, allReports]);
+  }, [projectId, reportPage]);
 
   useEffect(() => {
     void load();
@@ -114,6 +131,8 @@ export function ProjectDetailPage() {
   }
 
   async function openPicker() {
+    setPickRole("member");
+    setPickUtilization(100);
     setPickerOpen(true);
     await loadPickerResources(resourceSearch);
   }
@@ -126,7 +145,7 @@ export function ProjectDetailPage() {
   async function addResource(resourceId: number) {
     if (!project) return;
     try {
-      await attachResourceToProject(project.id, resourceId, pickUtilization);
+      await attachResourceToProject(project.id, resourceId, pickUtilization, pickRole);
       setPickerOpen(false);
       notifyUtilizationChanged();
       await load();
@@ -150,6 +169,16 @@ export function ProjectDetailPage() {
     }
   }
 
+  async function saveProjectRole(resourceId: number, role: ProjectRole) {
+    if (!project) return;
+    try {
+      await updateProjectResourceRole(project.id, resourceId, role);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update project role");
+    }
+  }
+
   async function removeResource(resourceId: number) {
     if (!project) return;
     try {
@@ -167,7 +196,8 @@ export function ProjectDetailPage() {
     try {
       await createStatusReport(project.id, reportBody.trim());
       setReportBody("");
-      await load();
+      if (reportPage === 0) await load();
+      else setReportPage(0);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add report");
     }
@@ -342,6 +372,22 @@ export function ProjectDetailPage() {
                 {a.resource.name} · <RoleBadge role={a.resource.role} />
               </span>
               <div className="resource-row__actions">
+                <label className="project-role-edit">
+                  <span className="muted">Role</span>
+                  <select
+                    value={a.project_role}
+                    aria-label={`Role for ${a.resource.name}`}
+                    onChange={(e) =>
+                      void saveProjectRole(a.resource.id, e.target.value as ProjectRole)
+                    }
+                  >
+                    {PROJECT_ROLES.map((role) => (
+                      <option key={role.code} value={role.code}>
+                        {role.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
                 <label className="utilization-edit">
                   <span className="muted">Util.</span>
                   <input
@@ -372,47 +418,72 @@ export function ProjectDetailPage() {
       <section className="content-panel detail-section">
         <div className="section-head">
           <h2>Status reports</h2>
-          {reports.total > 2 && (
+        </div>
+        {reports.items.length === 0 ? (
+          <p className="muted">No reports yet.</p>
+        ) : (
+          <ul className="report-list">
+            {reports.items.map((rep) => (
+              <li key={rep.id}>
+                <button
+                  type="button"
+                  className="report-list__main"
+                  onClick={() => setOpenReport(rep)}
+                >
+                  <time dateTime={rep.created_at}>{new Date(rep.created_at).toLocaleString()}</time>
+                  <span className="report-list__body">{rep.body}</span>
+                </button>
+                <div className="report-list__actions">
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--sm"
+                    onClick={() => {
+                      const next = window.prompt("Edit report", rep.body);
+                      if (next && next.trim()) {
+                        void updateStatusReport(project.id, rep.id, next.trim()).then(load);
+                      }
+                    }}
+                  >
+                    Edit
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--danger-outline btn--sm"
+                    onClick={() =>
+                      void deleteStatusReport(project.id, rep.id).then(load)
+                    }
+                  >
+                    Delete
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+        {reports.total > REPORT_PAGE_SIZE && (
+          <div className="report-pager">
+            <span>
+              {reportPage * REPORT_PAGE_SIZE + 1}–
+              {Math.min(reports.total, (reportPage + 1) * REPORT_PAGE_SIZE)} of {reports.total}
+            </span>
             <button
               type="button"
               className="btn btn--ghost btn--sm"
-              onClick={() => setAllReports((v) => !v)}
+              disabled={reportPage === 0}
+              onClick={() => setReportPage((page) => page - 1)}
             >
-              {allReports ? "Show recent 2" : `View all (${reports.total})`}
+              Previous
             </button>
-          )}
-        </div>
-        <div className="report-list">
-          {reports.items.map((rep) => (
-            <article key={rep.id} className="report-card">
-              <time className="muted">{new Date(rep.created_at).toLocaleString()}</time>
-              <pre className="report-body">{rep.body}</pre>
-              <div className="report-actions">
-                <button
-                  type="button"
-                  className="btn btn--ghost btn--sm"
-                  onClick={() => {
-                    const next = window.prompt("Edit report", rep.body);
-                    if (next && next.trim()) {
-                      void updateStatusReport(project.id, rep.id, next.trim()).then(load);
-                    }
-                  }}
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  className="btn btn--danger-outline btn--sm"
-                  onClick={() =>
-                    void deleteStatusReport(project.id, rep.id).then(load)
-                  }
-                >
-                  Delete
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
+            <button
+              type="button"
+              className="btn btn--ghost btn--sm"
+              disabled={(reportPage + 1) * REPORT_PAGE_SIZE >= reports.total}
+              onClick={() => setReportPage((page) => page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        )}
         <form className="modal__form" onSubmit={(e) => void addReport(e)}>
           <label>
             New status report
@@ -430,6 +501,31 @@ export function ProjectDetailPage() {
         </form>
       </section>
 
+      {openReport && (
+        <div className="modal-backdrop" onClick={() => setOpenReport(null)} role="presentation">
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="status-report-title"
+          >
+            <header className="modal__header">
+              <h2 id="status-report-title">Status report</h2>
+              <button type="button" className="icon-btn" onClick={() => setOpenReport(null)}>
+                ×
+              </button>
+            </header>
+            <p className="project-card__updated">
+              <time dateTime={openReport.created_at}>
+                {new Date(openReport.created_at).toLocaleString()}
+              </time>
+            </p>
+            <pre className="report-full">{openReport.body}</pre>
+          </div>
+        </div>
+      )}
+
       {pickerOpen && (
         <div className="modal-backdrop" onClick={() => setPickerOpen(false)} role="presentation">
           <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -445,6 +541,19 @@ export function ProjectDetailPage() {
               value={resourceSearch}
               onChange={(e) => void searchResources(e.target.value)}
             />
+            <label className="picker-utilization">
+              Role on this project
+              <select
+                value={pickRole}
+                onChange={(e) => setPickRole(e.target.value as ProjectRole)}
+              >
+                {PROJECT_ROLES.map((role) => (
+                  <option key={role.code} value={role.code}>
+                    {role.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             <label className="picker-utilization">
               Utilization on this project (%)
               <input

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { Resource, listResources } from "../api";
+import { Resource, listResources, projectRoleLabel } from "../api";
 import { projectListLabel } from "../utils/projectLabel";
 
 const UTILIZATION_CHANGED = "pm-utilization-changed";
@@ -88,7 +88,8 @@ export function OverUtilizationNotice() {
                           !assignment.parent_name,
                           assignment.parent_name,
                         )}{" "}
-                        -&gt; {assignment.utilization_percent}%
+                        -&gt; {projectRoleLabel(assignment.project_role)} -&gt;{" "}
+                        {assignment.utilization_percent}%
                       </li>
                     ))}
                   </ul>

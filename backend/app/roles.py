@@ -30,3 +30,30 @@ def parse_role(value: str) -> ResourceRole | None:
 
 def roles_for_api() -> list[dict[str, str]]:
     return [{"code": role.value, "label": ROLE_LABELS[role]} for role in ResourceRole]
+
+
+class ProjectRole(str, Enum):
+    member = "member"
+    lead = "lead"
+    director = "director"
+    dv_engineer = "dv_engineer"
+    rtl_engineer = "rtl_engineer"
+    software_engineer = "software_engineer"
+    firmware_engineer = "firmware_engineer"
+
+
+PROJECT_ROLE_LABELS: dict[ProjectRole, str] = {
+    ProjectRole.member: "Member",
+    ProjectRole.lead: "Lead",
+    ProjectRole.director: "Director",
+    ProjectRole.dv_engineer: "DV engineer",
+    ProjectRole.rtl_engineer: "RTL engineer",
+    ProjectRole.software_engineer: "Software engineer",
+    ProjectRole.firmware_engineer: "Firmware engineer",
+}
+
+
+def project_roles_for_api() -> list[dict[str, str]]:
+    return [
+        {"code": role.value, "label": PROJECT_ROLE_LABELS[role]} for role in ProjectRole
+    ]

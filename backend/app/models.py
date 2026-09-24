@@ -103,6 +103,7 @@ class ProjectResource(Base):
         ForeignKey("resources.id", ondelete="CASCADE"), primary_key=True
     )
     utilization_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
+    project_role: Mapped[str] = mapped_column(String(64), nullable=False, default="member")
 
 
 class ProjectStatusReport(Base):

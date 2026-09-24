@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ProjectResource, Resource
+from app.roles import ProjectRole
 from app.schemas.projects import AssignedResourceRead
 from app.schemas.resources import ResourceRead
 
@@ -17,6 +18,7 @@ def list_assigned_resources(db: Session, project_id: int) -> list[AssignedResour
         AssignedResourceRead(
             resource=ResourceRead.model_validate(resource),
             utilization_percent=link.utilization_percent,
+            project_role=ProjectRole(link.project_role),
         )
         for link, resource in rows
     ]

@@ -1,7 +1,8 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from app.roles import ProjectRole
 from app.schemas.resources import ResourceRead
 
 
@@ -166,15 +167,24 @@ class ProjectDetail(BaseModel):
 class AssignedResourceRead(BaseModel):
     resource: ResourceRead
     utilization_percent: int = Field(ge=0, le=100)
+    project_role: ProjectRole
 
 
 class ProjectResourceAttach(BaseModel):
     resource_id: int
     utilization_percent: int = Field(default=100, ge=0, le=100)
+    project_role: ProjectRole = ProjectRole.member
 
 
 class ProjectResourceUpdate(BaseModel):
-    utilization_percent: int = Field(ge=0, le=100)
+    utilization_percent: int | None = Field(default=None, ge=0, le=100)
+    project_role: ProjectRole | None = None
+
+    @model_validator(mode="after")
+    def require_a_change(self) -> "ProjectResourceUpdate":
+        if self.utilization_percent is None and self.project_role is None:
+            raise ValueError("Provide utilization_percent or project_role")
+        return self
 
 
 class StatusReportCreate(BaseModel):

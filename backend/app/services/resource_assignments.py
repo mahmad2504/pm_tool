@@ -21,6 +21,7 @@ def assignments_by_resource_ids(
             Parent.name,
             Group.name,
             ProjectResource.utilization_percent,
+            ProjectResource.project_role,
         )
         .join(Project, ProjectResource.project_id == Project.id)
         .join(Root, Project.root_project_id == Root.id)
@@ -31,7 +32,15 @@ def assignments_by_resource_ids(
     ).all()
 
     result: dict[int, list[ResourceProjectAssignment]] = {rid: [] for rid in resource_ids}
-    for resource_id, project_id, project_name, parent_name, group_name, utilization in rows:
+    for (
+        resource_id,
+        project_id,
+        project_name,
+        parent_name,
+        group_name,
+        utilization,
+        project_role,
+    ) in rows:
         result[resource_id].append(
             ResourceProjectAssignment(
                 project_id=project_id,
@@ -39,6 +48,7 @@ def assignments_by_resource_ids(
                 parent_name=parent_name,
                 group_name=group_name,
                 utilization_percent=utilization,
+                project_role=project_role,
             )
         )
     return result

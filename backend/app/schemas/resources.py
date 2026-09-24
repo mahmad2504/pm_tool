@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from app.roles import ResourceRole, parse_role
+from app.roles import ProjectRole, ResourceRole, parse_role
 
 
 def normalize_notes(value: str | None) -> str | None:
@@ -88,6 +88,7 @@ class ResourceProjectAssignment(BaseModel):
     parent_name: str | None = None
     group_name: str | None
     utilization_percent: int = Field(ge=0, le=100)
+    project_role: ProjectRole = ProjectRole.member
 
 
 class ResourceWithUtilization(ResourceRead):

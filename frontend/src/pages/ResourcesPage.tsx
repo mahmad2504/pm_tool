@@ -11,6 +11,7 @@ import {
   ResourceInput,
   ResourceRole,
   RoleItem,
+  projectRoleLabel,
   createResource,
   deleteResource,
   importResources,
@@ -379,7 +380,10 @@ export function ResourcesPage() {
                               a.parent_name,
                             )}
                           </Link>
-                          <span className="muted"> — {a.utilization_percent}%</span>
+                          <span className="muted">
+                            {" "}
+                            — {projectRoleLabel(a.project_role)} — {a.utilization_percent}%
+                          </span>
                         </li>
                       ))}
                     </ul>

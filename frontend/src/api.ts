@@ -2,6 +2,29 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
 export type ResourceRole = "software_engineer" | "hardware_engineer" | "lead";
 
+export type ProjectRole =
+  | "member"
+  | "lead"
+  | "director"
+  | "dv_engineer"
+  | "rtl_engineer"
+  | "software_engineer"
+  | "firmware_engineer";
+
+export const PROJECT_ROLES: { code: ProjectRole; label: string }[] = [
+  { code: "member", label: "Member" },
+  { code: "lead", label: "Lead" },
+  { code: "director", label: "Director" },
+  { code: "dv_engineer", label: "DV engineer" },
+  { code: "rtl_engineer", label: "RTL engineer" },
+  { code: "software_engineer", label: "Software engineer" },
+  { code: "firmware_engineer", label: "Firmware engineer" },
+];
+
+export function projectRoleLabel(code: ProjectRole): string {
+  return PROJECT_ROLES.find((role) => role.code === code)?.label ?? code;
+}
+
 export interface RoleItem {
   code: ResourceRole;
   label: string;
@@ -13,6 +36,7 @@ export interface ResourceProjectAssignment {
   parent_name: string | null;
   group_name: string | null;
   utilization_percent: number;
+  project_role: ProjectRole;
 }
 
 export interface Resource {
@@ -42,6 +66,7 @@ export interface ResourceInput {
 export interface AssignedResource {
   resource: Resource;
   utilization_percent: number;
+  project_role: ProjectRole;
 }
 
 export interface ImportResult {
@@ -310,6 +335,7 @@ export function attachResourceToProject(
   projectId: number,
   resourceId: number,
   utilizationPercent: number = 100,
+  projectRole: ProjectRole = "member",
 ): Promise<void> {
   return request(`/api/projects/${projectId}/resources`, {
     method: "POST",
@@ -317,6 +343,7 @@ export function attachResourceToProject(
     body: JSON.stringify({
       resource_id: resourceId,
       utilization_percent: utilizationPercent,
+      project_role: projectRole,
     }),
   });
 }
@@ -333,6 +360,18 @@ export function updateProjectResourceUtilization(
   });
 }
 
+export function updateProjectResourceRole(
+  projectId: number,
+  resourceId: number,
+  projectRole: ProjectRole,
+): Promise<AssignedResource> {
+  return request(`/api/projects/${projectId}/resources/${resourceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ project_role: projectRole }),
+  });
+}
+
 export function detachResourceFromProject(
   projectId: number,
   resourceId: number,
@@ -345,9 +384,11 @@ export function detachResourceFromProject(
 export function listStatusReports(
   projectId: number,
   limit?: number,
+  offset?: number,
 ): Promise<{ items: StatusReport[]; total: number }> {
   const search = new URLSearchParams();
   if (limit) search.set("limit", String(limit));
+  if (offset) search.set("offset", String(offset));
   const query = search.toString();
   return request(`/api/projects/${projectId}/status-reports${query ? `?${query}` : ""}`);
 }

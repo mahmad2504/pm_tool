@@ -130,19 +130,35 @@ def test_resources_on_project(client, db_session):
     detail = client.get(f"/api/projects/{root['id']}").json()
     assert len(detail["resources"]) == 1
     assert detail["resources"][0]["utilization_percent"] == 80
+    assert detail["resources"][0]["project_role"] == "member"
 
     patch = client.patch(
         f"/api/projects/{root['id']}/resources/1",
-        json={"utilization_percent": 50},
+        json={"utilization_percent": 50, "project_role": "rtl_engineer"},
     )
     assert patch.status_code == 200
     assert patch.json()["utilization_percent"] == 50
+    assert patch.json()["project_role"] == "rtl_engineer"
+
+    role_only = client.patch(
+        f"/api/projects/{root['id']}/resources/1",
+        json={"project_role": "firmware_engineer"},
+    )
+    assert role_only.status_code == 200
+    assert role_only.json()["utilization_percent"] == 50
+    assert role_only.json()["project_role"] == "firmware_engineer"
 
     bad = client.patch(
         f"/api/projects/{root['id']}/resources/1",
         json={"utilization_percent": 101},
     )
     assert bad.status_code == 422
+
+    unknown_role = client.post(
+        f"/api/projects/{root['id']}/resources",
+        json={"resource_id": 1, "project_role": "manager"},
+    )
+    assert unknown_role.status_code == 422
 
     assert client.delete(f"/api/projects/{root['id']}/resources/1").status_code == 204
 
