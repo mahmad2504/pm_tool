@@ -124,6 +124,7 @@ class SubProjectSummary(BaseModel):
     name: str
     description: str | None
     status: ProjectLifecycle
+    resource_count: int = 0
 
 
 class ProjectSummary(BaseModel):

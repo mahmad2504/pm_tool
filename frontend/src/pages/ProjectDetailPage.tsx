@@ -30,8 +30,6 @@ import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
-import { projectListLabel } from "../utils/projectLabel";
-
 const REPORT_PAGE_SIZE = 5;
 
 const PROJECT_ROLE_LIST_RANK: Partial<Record<ProjectRole, number>> = {
@@ -399,54 +397,6 @@ export function ProjectDetailPage() {
         </form>
       </section>
 
-      {project.is_root && (
-        <section className="content-panel detail-section">
-          <h2>Sub-projects</h2>
-          <ul className="sub-list">
-            {project.sub_projects.map((s) => (
-              <li key={s.id}>
-                <Link to={`/projects/${s.id}`}>
-                  {projectListLabel(s.name, false, project.name)}
-                </Link>
-                <ProjectStatusBadge status={s.status} />
-              </li>
-            ))}
-            {project.sub_projects.length === 0 && (
-              <li className="muted">No sub-projects yet.</li>
-            )}
-          </ul>
-          <form className="inline-form" onSubmit={(e) => void addSub(e)}>
-            <input
-              required
-              placeholder="Sub-project name"
-              value={subForm.name}
-              onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
-            />
-            <input
-              placeholder="Description (optional)"
-              value={subForm.description}
-              onChange={(e) => setSubForm({ ...subForm, description: e.target.value })}
-            />
-            <select
-              aria-label="Sub-project status"
-              value={subForm.status}
-              onChange={(e) =>
-                setSubForm({ ...subForm, status: e.target.value as ProjectStatus })
-              }
-            >
-              {PROJECT_STATUSES.map((status) => (
-                <option key={status.code} value={status.code}>
-                  {status.label}
-                </option>
-              ))}
-            </select>
-            <button type="submit" className="btn btn--secondary">
-              Add sub-project
-            </button>
-          </form>
-        </section>
-      )}
-
       <section className="content-panel detail-section">
         <div className="section-head">
           <h2>Resources</h2>
@@ -517,6 +467,61 @@ export function ProjectDetailPage() {
           {project.resources.length === 0 && <li className="muted">No resources assigned.</li>}
         </ul>
       </section>
+
+      {project.is_root && (
+        <section className="content-panel detail-section">
+          <h2>Sub-projects</h2>
+          <ul className="sub-list">
+            {project.sub_projects.map((s) => (
+              <li key={s.id}>
+                <Link to={`/projects/${s.id}`}>{s.name}</Link>
+                <ProjectStatusBadge status={s.status} />
+                <span className="sub-resource-count" title={`${s.resource_count} people`}>
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                    <circle cx="9" cy="7" r="4" />
+                    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                  </svg>
+                  <span>{s.resource_count}</span>
+                </span>
+              </li>
+            ))}
+            {project.sub_projects.length === 0 && (
+              <li className="muted">No sub-projects yet.</li>
+            )}
+          </ul>
+          <form className="inline-form" onSubmit={(e) => void addSub(e)}>
+            <input
+              required
+              placeholder="Sub-project name"
+              value={subForm.name}
+              onChange={(e) => setSubForm({ ...subForm, name: e.target.value })}
+            />
+            <input
+              placeholder="Description (optional)"
+              value={subForm.description}
+              onChange={(e) => setSubForm({ ...subForm, description: e.target.value })}
+            />
+            <select
+              aria-label="Sub-project status"
+              value={subForm.status}
+              onChange={(e) =>
+                setSubForm({ ...subForm, status: e.target.value as ProjectStatus })
+              }
+            >
+              {PROJECT_STATUSES.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+            <button type="submit" className="btn btn--secondary">
+              Add sub-project
+            </button>
+          </form>
+        </section>
+      )}
 
       <section className="content-panel detail-section">
         <div className="section-head">

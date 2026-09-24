@@ -859,7 +859,8 @@ a {
 }
 
 .project-card__people,
-.project-card__report {
+.project-card__report,
+.sub-resource-count {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
@@ -872,13 +873,21 @@ a {
   cursor: pointer;
 }
 
-.project-card__people span {
+.sub-resource-count {
+  margin-left: auto;
+  cursor: default;
+  flex: none;
+}
+
+.project-card__people span,
+.sub-resource-count span {
   font-size: 0.7rem;
   line-height: 1;
 }
 
 .project-card__people svg,
-.project-card__report svg {
+.project-card__report svg,
+.sub-resource-count svg {
   width: 1rem;
   height: 1rem;
   fill: none;

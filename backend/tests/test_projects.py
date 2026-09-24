@@ -211,6 +211,10 @@ def test_root_people_count_includes_sub_projects(client, db_session):
     listed = client.get("/api/projects", params={"roots_only": True}).json()
     match = next(item for item in listed["items"] if item["id"] == root["id"])
     assert match["resource_count"] == 2
+    assert match["sub_projects"][0]["resource_count"] == 1
+
+    detail = client.get(f"/api/projects/{root['id']}").json()
+    assert detail["sub_projects"][0]["resource_count"] == 1
 
 
 def test_project_status_defaults_and_updates(client):

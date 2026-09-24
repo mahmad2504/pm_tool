@@ -205,6 +205,7 @@ export interface SubProjectSummary {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  resource_count: number;
 }
 
 export interface ProjectSummary {

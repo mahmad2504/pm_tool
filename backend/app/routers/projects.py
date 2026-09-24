@@ -70,14 +70,30 @@ def _resource_count(db: Session, project_ids: list[int]) -> int:
     )
 
 
-def _sub_project_summaries(children: list[Project]) -> list[SubProjectSummary]:
+def _resource_counts(db: Session, project_ids: list[int]) -> dict[int, int]:
+    counts = {project_id: 0 for project_id in project_ids}
+    if not project_ids:
+        return counts
+    rows = db.execute(
+        select(ProjectResource.project_id, func.count())
+        .where(ProjectResource.project_id.in_(project_ids))
+        .group_by(ProjectResource.project_id)
+    ).all()
+    for project_id, count in rows:
+        counts[project_id] = int(count)
+    return counts
+
+
+def _sub_project_summaries(db: Session, children: list[Project]) -> list[SubProjectSummary]:
     ordered = sorted(children, key=lambda child: (child.name.lower(), child.id))
+    counts = _resource_counts(db, [child.id for child in ordered])
     return [
         SubProjectSummary(
             id=child.id,
             name=child.name,
             description=child.description,
             status=ProjectLifecycle(child.status),
+            resource_count=counts[child.id],
         )
         for child in ordered
     ]
@@ -114,7 +130,7 @@ def _to_summary(
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
-        sub_projects=_sub_project_summaries(children),
+        sub_projects=_sub_project_summaries(db, children),
         created_at=project.created_at,
         updated_at=last_activity_at(db, project, children),
     )
@@ -354,11 +370,7 @@ def get_project(
         group_icon_url=group_icon_url(group),
         status=ProjectLifecycle(project.status),
         resources=assignments,
-        sub_projects=[
-            SubProjectSummary(
-                id=c.id, name=c.name, description=c.description, status=ProjectLifecycle(c.status)
-            ) for c in children
-        ],
+        sub_projects=_sub_project_summaries(db, list(children)),
         recent_status_reports=[StatusReportRead.model_validate(r) for r in recent],
         created_at=project.created_at,
         updated_at=last_activity_at(db, project, list(children)),
