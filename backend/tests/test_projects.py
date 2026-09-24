@@ -277,6 +277,87 @@ def test_rename_group(client):
     assert blank.status_code == 422
 
 
+def test_export_projects_jsonl(client, db_session):
+    import json
+
+    alpha = create_root(client, name="Alpha", group_name="Platform").json()
+    beta = create_root(client, name="Beta", group_name="Other").json()
+    sub = client.post(
+        f"/api/projects/{alpha['id']}/sub-projects",
+        json={"name": "Child", "description": "nested"},
+    ).json()
+    db_session.add(Resource(name="Dev", role="software_engineer", email="dev@example.com"))
+    db_session.commit()
+    assert (
+        client.post(
+            f"/api/projects/{alpha['id']}/resources",
+            json={"resource_id": 1, "utilization_percent": 40, "project_role": "lead"},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{sub['id']}/resources",
+            json={"resource_id": 1, "utilization_percent": 20, "project_role": "dv_engineer"},
+        ).status_code
+        == 201
+    )
+    for index in range(4):
+        assert (
+            client.post(
+                f"/api/projects/{alpha['id']}/status-reports",
+                json={"body": f"Alpha report {index}"},
+            ).status_code
+            == 201
+        )
+    assert (
+        client.post(
+            f"/api/projects/{sub['id']}/status-reports",
+            json={"body": "Child report"},
+        ).status_code
+        == 201
+    )
+
+    exported = client.get(
+        "/api/projects/export",
+        params={"group_id": alpha["group_id"], "reports": 2},
+    )
+    assert exported.status_code == 200
+    assert exported.headers["content-type"].startswith("application/jsonl")
+    lines = [json.loads(line) for line in exported.text.splitlines() if line.strip()]
+    assert [item["name"] for item in lines] == ["Alpha"]
+    alpha_row = lines[0]
+    assert alpha_row["group_name"] == "Platform"
+    assert alpha_row["status_report_count"] == 4
+    assert [report["body"] for report in alpha_row["status_reports"]] == [
+        "Alpha report 3",
+        "Alpha report 2",
+    ]
+    assert alpha_row["resources"][0]["project_role"] == "lead"
+    assert alpha_row["resources"][0]["resource"]["email"] == "dev@example.com"
+    assert alpha_row["resources"][0]["utilization_percent"] == 40
+    assert alpha_row["sub_projects"][0]["name"] == "Child"
+    assert alpha_row["sub_projects"][0]["description"] == "nested"
+    assert alpha_row["sub_projects"][0]["resources"][0]["project_role"] == "dv_engineer"
+    assert alpha_row["sub_projects"][0]["status_reports"][0]["body"] == "Child report"
+
+    defaults = client.get("/api/projects/export", params={"q": "Alpha"})
+    default_row = json.loads(defaults.text.strip())
+    assert len(default_row["status_reports"]) == 3
+    assert default_row["status_reports"][0]["body"] == "Alpha report 3"
+
+    none = client.get("/api/projects/export", params={"q": "Alpha", "reports": 0})
+    none_row = json.loads(none.text.strip())
+    assert none_row["status_reports"] == []
+    assert none_row["status_report_count"] == 4
+    assert none_row["sub_projects"][0]["status_reports"] == []
+
+    both = client.get("/api/projects/export")
+    names = [json.loads(line)["name"] for line in both.text.splitlines() if line.strip()]
+    assert names == ["Alpha", "Beta"]
+    assert beta["id"]
+
+
 def test_roots_are_ordered_by_last_activity(client):
     older = create_root(client, name="Older", group_name="Platform").json()
     newer = create_root(client, name="Newer", group_name="Platform").json()

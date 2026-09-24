@@ -11,6 +11,8 @@ from app.schemas.projects import (
     ProjectCreateRoot,
     ProjectCreateSub,
     ProjectDetail,
+    ProjectExportRecord,
+    ProjectExportSubProject,
     ProjectListResponse,
     ProjectPatch,
     ProjectResourceAttach,
@@ -122,16 +124,12 @@ def _recent_reports(db: Session, project_id: int, limit: int) -> list[ProjectSta
     )
 
 
-@router.get("", response_model=ProjectListResponse)
-def list_projects(
-    db: DbSession,
+def _filtered_projects(
     q: str | None = None,
     group_id: int | None = None,
     parent_id: int | None = None,
     roots_only: bool = False,
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-) -> ProjectListResponse:
+):
     Root = aliased(Project)
     stmt = select(Project).join(Root, Project.root_project_id == Root.id)
     stmt = stmt.outerjoin(Group, Root.group_id == Group.id)
@@ -154,6 +152,58 @@ def list_projects(
         )
     if filters:
         stmt = stmt.where(*filters)
+    return stmt
+
+
+def _export_record(db: Session, project: Project, reports: int) -> ProjectExportRecord:
+    children = _load_children(db, project.id)
+    group = effective_group(db, project)
+    return ProjectExportRecord(
+        id=project.id,
+        name=project.name,
+        description=project.description,
+        group_id=group.id if group else None,
+        group_name=group.name if group else None,
+        created_at=project.created_at,
+        updated_at=project.updated_at,
+        resources=list_assigned_resources(db, project.id),
+        status_report_count=_status_report_count(db, project.id),
+        status_reports=[
+            StatusReportRead.model_validate(report)
+            for report in _recent_reports(db, project.id, reports)
+        ],
+        sub_projects=[
+            ProjectExportSubProject(
+                id=child.id,
+                name=child.name,
+                description=child.description,
+                created_at=child.created_at,
+                updated_at=child.updated_at,
+                resources=list_assigned_resources(db, child.id),
+                status_report_count=_status_report_count(db, child.id),
+                status_reports=[
+                    StatusReportRead.model_validate(report)
+                    for report in _recent_reports(db, child.id, reports)
+                ],
+            )
+            for child in sorted(children, key=lambda child: (child.name.lower(), child.id))
+        ],
+    )
+
+
+@router.get("", response_model=ProjectListResponse)
+def list_projects(
+    db: DbSession,
+    q: str | None = None,
+    group_id: int | None = None,
+    parent_id: int | None = None,
+    roots_only: bool = False,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ProjectListResponse:
+    stmt = _filtered_projects(
+        q=q, group_id=group_id, parent_id=parent_id, roots_only=roots_only
+    )
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(count_stmt) or 0
@@ -171,6 +221,28 @@ def list_projects(
     return ProjectListResponse(
         items=[_to_summary(db, p, children_by_parent.get(p.id, [])) for p in items],
         total=total,
+    )
+
+
+@router.get("/export")
+def export_projects(
+    db: DbSession,
+    q: str | None = None,
+    group_id: int | None = None,
+    reports: int = Query(default=3, ge=0, le=100),
+) -> Response:
+    projects = db.scalars(
+        _filtered_projects(q=q, group_id=group_id, roots_only=True).order_by(
+            latest_activity_order().desc(), Project.id.desc()
+        )
+    ).all()
+    lines = [
+        _export_record(db, project, reports).model_dump_json() + "\n" for project in projects
+    ]
+    return Response(
+        content="".join(lines),
+        media_type="application/jsonl",
+        headers={"Content-Disposition": 'attachment; filename="projects.jsonl"'},
     )
 
 

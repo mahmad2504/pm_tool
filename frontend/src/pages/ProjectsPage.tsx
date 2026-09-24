@@ -7,6 +7,8 @@ import {
   StatusReport,
   createRootProject,
   createStatusReport,
+  downloadProjectsExport,
+  projectsExportFilename,
   getProject,
   groupIconSrc,
   listGroups,
@@ -97,6 +99,10 @@ export function ProjectsPage() {
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [groupSaving, setGroupSaving] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportReports, setExportReports] = useState("3");
+  const [exportFileName, setExportFileName] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
@@ -281,6 +287,50 @@ export function ProjectsPage() {
     }
   }
 
+  function exportFilterLabel(): string {
+    const groupName = groupFilter
+      ? (groups.find((group) => group.id === groupFilter)?.name ?? "group")
+      : "all groups";
+    const query = search.trim();
+    return query ? `${groupName} ${query}` : groupName;
+  }
+
+  function openExport() {
+    setExportReports("3");
+    setExportFileName(projectsExportFilename(exportFilterLabel()));
+    setExportOpen(true);
+  }
+
+  async function runExport(event: FormEvent) {
+    event.preventDefault();
+    const reports = Number(exportReports);
+    if (!Number.isInteger(reports) || reports < 0 || reports > 100) {
+      setError("Enter a whole number of reports from 0 to 100");
+      return;
+    }
+    const filename = exportFileName.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+    if (!filename) {
+      setError("Enter a file name");
+      return;
+    }
+    const downloadName = filename.toLowerCase().endsWith(".jsonl") ? filename : `${filename}.jsonl`;
+    setExporting(true);
+    setError(null);
+    try {
+      await downloadProjectsExport({
+        q: search.trim() || undefined,
+        group_id: groupFilter || undefined,
+        reports,
+        filename: downloadName,
+      });
+      setExportOpen(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   async function handleCreate(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
@@ -352,6 +402,14 @@ export function ProjectsPage() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={loading || exporting}
+            onClick={openExport}
+          >
+            Export
+          </button>
         </div>
 
         {loading ? (
@@ -440,6 +498,63 @@ export function ProjectsPage() {
         )}
         <p className="muted list-footer">{total} root project(s)</p>
       </section>
+
+      {exportOpen && (
+        <div className="modal-backdrop" onClick={() => setExportOpen(false)} role="presentation">
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="export-dialog-title"
+          >
+            <header className="modal__header">
+              <h2 id="export-dialog-title">Export projects</h2>
+              <button type="button" className="icon-btn" onClick={() => setExportOpen(false)}>
+                ×
+              </button>
+            </header>
+            <p className="modal__message">
+              Exports {total} root project{total === 1 ? "" : "s"} matching the current search and
+              group filter. Each project is one JSONL line, with people, sub-projects, and the
+              latest status reports.
+            </p>
+            <form className="modal__form" onSubmit={(event) => void runExport(event)}>
+              <label>
+                File name
+                <input
+                  required
+                  value={exportFileName}
+                  onChange={(event) => setExportFileName(event.target.value)}
+                />
+              </label>
+              <label>
+                Last status reports
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  required
+                  value={exportReports}
+                  onChange={(event) => setExportReports(event.target.value)}
+                />
+              </label>
+              <p className="muted">
+                How many of the most recent status reports to include for each project and
+                sub-project.
+              </p>
+              <footer className="modal__footer">
+                <button type="button" className="btn btn--ghost" onClick={() => setExportOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn--primary" disabled={exporting}>
+                  {exporting ? "Exporting…" : "Export JSONL"}
+                </button>
+              </footer>
+            </form>
+          </div>
+        </div>
+      )}
 
       {groupEditor && (
         <div className="modal-backdrop" onClick={closeGroupEditor} role="presentation">

@@ -226,6 +226,31 @@ class StatusReportListResponse(BaseModel):
     total: int
 
 
+class ProjectExportSubProject(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    created_at: datetime
+    updated_at: datetime
+    resources: list[AssignedResourceRead]
+    status_report_count: int
+    status_reports: list[StatusReportRead]
+
+
+class ProjectExportRecord(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    group_id: int | None
+    group_name: str | None
+    created_at: datetime
+    updated_at: datetime
+    resources: list[AssignedResourceRead]
+    status_report_count: int
+    status_reports: list[StatusReportRead]
+    sub_projects: list[ProjectExportSubProject]
+
+
 class GroupRead(BaseModel):
     id: int
     name: str

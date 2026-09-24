@@ -266,6 +266,39 @@ export async function uploadGroupIcon(groupId: number, file: File): Promise<Grou
   return response.json();
 }
 
+export function projectsExportFilename(filterLabel: string, now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  const safe =
+    filterLabel.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() || "all groups";
+  return `projects ${stamp} ${safe}.jsonl`;
+}
+
+export async function downloadProjectsExport(params: {
+  q?: string;
+  group_id?: number;
+  reports: number;
+  filename: string;
+}): Promise<void> {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.group_id) search.set("group_id", String(params.group_id));
+  search.set("reports", String(params.reports));
+  const response = await fetch(`${API_BASE}/api/projects/export?${search}`);
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = params.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export function listProjects(params?: {
   q?: string;
   group_id?: number;
