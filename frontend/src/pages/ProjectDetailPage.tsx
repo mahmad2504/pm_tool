@@ -26,7 +26,7 @@ import {
 } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { OnboardedIcon } from "../components/OnboardedIcon";
-import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
+import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
 import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
@@ -114,6 +114,15 @@ export function ProjectDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function changeStatus(projectId: number, status: ProjectStatus) {
+    try {
+      await patchProject(projectId, { status });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
 
   async function saveMeta(e: FormEvent) {
     e.preventDefault();
@@ -294,7 +303,11 @@ export function ProjectDetailPage() {
             )}
           </p>
           <h1>{project.name}</h1>
-          <ProjectStatusBadge status={project.status} />
+          <ProjectStatusSelect
+            status={project.status}
+            label={`Status for ${project.name}`}
+            onChange={(status) => void changeStatus(project.id, status)}
+          />
           <p className="project-card__updated">
             Last updated{" "}
             <time dateTime={project.updated_at}>
@@ -475,7 +488,11 @@ export function ProjectDetailPage() {
             {project.sub_projects.map((s) => (
               <li key={s.id}>
                 <Link to={`/projects/${s.id}`}>{s.name}</Link>
-                <ProjectStatusBadge status={s.status} />
+                <ProjectStatusSelect
+                  status={s.status}
+                  label={`Status for ${s.name}`}
+                  onChange={(status) => void changeStatus(s.id, status)}
+                />
                 <span className="sub-resource-count" title={`${s.resource_count} people`}>
                   <svg viewBox="0 0 24 24" aria-hidden="true">
                     <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />

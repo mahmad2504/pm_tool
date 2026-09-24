@@ -16,12 +16,14 @@ import {
   listGroups,
   listProjects,
   listStatusReports,
+  patchProject,
   updateGroup,
   updateStatusReport,
   uploadGroupIcon,
 } from "../api";
 import { OnboardedIcon } from "../components/OnboardedIcon";
-import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
+import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
+import { PeopleNameHover, SubProjectPeopleHint } from "../components/SubProjectPeopleHint";
 import { AppShell } from "../layout/AppShell";
 import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
 
@@ -143,6 +145,17 @@ export function ProjectsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function changeProjectStatus(projectId: number, status: ProjectStatus) {
+    try {
+      await patchProject(projectId, { status });
+      setProjects((current) =>
+        current.map((item) => (item.id === projectId ? { ...item, status } : item)),
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
 
   async function openPeople(project: ProjectSummary) {
     setPeopleTarget(project);
@@ -468,21 +481,32 @@ export function ProjectsPage() {
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
                   </h3>
                   <div className="project-card__head-actions">
-                    <ProjectStatusBadge status={p.status} />
-                    <button
-                      type="button"
-                      className="project-card__people"
-                      aria-label={`${p.resource_count} people`}
-                      onClick={() => void openPeople(p)}
+                    <ProjectStatusSelect
+                      status={p.status}
+                      label={`Status for ${p.name}`}
+                      onChange={(status) => void changeProjectStatus(p.id, status)}
+                    />
+                    <PeopleNameHover
+                      projectIds={[p.id, ...p.sub_projects.map((sub) => sub.id)]}
+                      mainProjectId={p.id}
+                      className="project-card__people-hover"
+                      align="end"
                     >
-                      <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                        <circle cx="9" cy="7" r="4" />
-                        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                      </svg>
-                      <span>{p.resource_count}</span>
-                    </button>
+                      <button
+                        type="button"
+                        className="project-card__people"
+                        aria-label={`${p.resource_count} people`}
+                        onClick={() => void openPeople(p)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                          <circle cx="9" cy="7" r="4" />
+                          <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                          <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                        </svg>
+                        <span>{p.resource_count}</span>
+                      </button>
+                    </PeopleNameHover>
                     {p.status_report_count > 0 && (
                       <button
                         type="button"
@@ -511,13 +535,10 @@ export function ProjectsPage() {
                         <Link to={`/projects/${sub.id}`}>
                           {sub.name}
                           {sub.resource_count > 0 && (
-                            <span className="project-card__sub-count">
-                              <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                                <circle cx="12" cy="7" r="4" />
-                              </svg>
-                              {sub.resource_count}
-                            </span>
+                            <SubProjectPeopleHint
+                              projectId={sub.id}
+                              count={sub.resource_count}
+                            />
                           )}
                         </Link>
                       </li>
