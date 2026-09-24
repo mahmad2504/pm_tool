@@ -41,6 +41,10 @@ class ProjectCreateRoot(BaseModel):
         return trim_optional_description(value)
 
 
+class ProjectMove(BaseModel):
+    parent_id: int
+
+
 class ProjectCreateSub(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None

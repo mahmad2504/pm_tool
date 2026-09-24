@@ -6,12 +6,15 @@ import {
   ProjectDetail,
   ProjectRole,
   ProjectStatus,
+  ProjectSummary,
   Resource,
   StatusReport,
   attachResourceToProject,
   createStatusReport,
   createSubProject,
   deleteProject,
+  listProjects,
+  moveSubProject,
   deleteStatusReport,
   detachResourceFromProject,
   getProject,
@@ -36,6 +39,83 @@ const PROJECT_ROLE_LIST_RANK: Partial<Record<ProjectRole, number>> = {
   director: 0,
   lead: 1,
 };
+
+function MoveSubProjectControl({
+  subProjectId,
+  currentParentId,
+  onMoved,
+  onError,
+}: {
+  subProjectId: number;
+  currentParentId: number;
+  onMoved: () => void;
+  onError: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [roots, setRoots] = useState<ProjectSummary[]>([]);
+  const [parentId, setParentId] = useState("");
+  const [moving, setMoving] = useState(false);
+
+  async function start() {
+    setOpen(true);
+    setParentId("");
+    try {
+      const data = await listProjects({ roots_only: true, limit: 200 });
+      setRoots(data.items.filter((item) => item.id !== currentParentId));
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to load projects");
+    }
+  }
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const nextParent = Number(parentId);
+    if (!nextParent) return;
+    setMoving(true);
+    try {
+      await moveSubProject(subProjectId, nextParent);
+      setOpen(false);
+      onMoved();
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to move sub-project");
+    } finally {
+      setMoving(false);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button type="button" className="btn btn--ghost btn--sm" onClick={() => void start()}>
+        Move
+      </button>
+    );
+  }
+
+  return (
+    <form className="sub-move__form" onSubmit={(event) => void submit(event)}>
+      <select
+        aria-label="Move to project"
+        required
+        value={parentId}
+        onChange={(event) => setParentId(event.target.value)}
+      >
+        <option value="">Select a project</option>
+        {roots.map((root) => (
+          <option key={root.id} value={root.id}>
+            {root.group_name ? `${root.name} (${root.group_name})` : root.name}
+          </option>
+        ))}
+      </select>
+      <button type="submit" className="btn btn--secondary btn--sm" disabled={moving || !parentId}>
+        {moving ? "Moving…" : "Move"}
+      </button>
+      <button type="button" className="btn btn--ghost btn--sm" onClick={() => setOpen(false)}>
+        Cancel
+      </button>
+      {roots.length === 0 && <span className="muted">No other projects</span>}
+    </form>
+  );
+}
 
 function compareProjectResources(
   a: { project_role: ProjectRole; resource: { name: string } },
@@ -408,6 +488,16 @@ export function ProjectDetailPage() {
             Save details
           </button>
         </form>
+        {!project.is_root && project.parent_id != null && (
+          <div className="sub-move">
+            <MoveSubProjectControl
+              subProjectId={project.id}
+              currentParentId={project.parent_id}
+              onMoved={() => void load()}
+              onError={setError}
+            />
+          </div>
+        )}
       </section>
 
       <section className="content-panel detail-section">
@@ -502,6 +592,12 @@ export function ProjectDetailPage() {
                   </svg>
                   <span>{s.resource_count}</span>
                 </span>
+                <MoveSubProjectControl
+                  subProjectId={s.id}
+                  currentParentId={project.id}
+                  onMoved={() => void load()}
+                  onError={setError}
+                />
               </li>
             ))}
             {project.sub_projects.length === 0 && (

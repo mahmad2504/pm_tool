@@ -364,6 +364,14 @@ export function createRootProject(data: {
   });
 }
 
+export function moveSubProject(id: number, parentId: number): Promise<ProjectSummary> {
+  return request(`/api/projects/${id}/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ parent_id: parentId }),
+  });
+}
+
 export function createSubProject(
   parentId: number,
   data: { name: string; description?: string | null; status?: ProjectStatus },

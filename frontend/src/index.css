@@ -815,7 +815,24 @@ a {
 .sub-list li:not(.resource-row) {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.sub-move {
+  margin-top: 1rem;
+}
+
+.sub-move__form {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.sub-move__form select {
+  min-width: 14rem;
 }
 
 .project-card__subs {

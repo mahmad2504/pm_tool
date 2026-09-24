@@ -16,6 +16,7 @@ from app.schemas.projects import (
     ProjectExportRecord,
     ProjectExportSubProject,
     ProjectListResponse,
+    ProjectMove,
     ProjectPatch,
     ProjectResourceAttach,
     ProjectResourceUpdate,
@@ -38,6 +39,7 @@ from app.services.projects import (
     get_root,
     last_activity_at,
     latest_activity_order,
+    move_sub_project,
     touch_project,
     validate_parent_for_new_sub,
 )
@@ -363,6 +365,15 @@ def create_sub_project(
     db.commit()
     db.refresh(project)
     response.headers["Location"] = f"/api/projects/{project.id}"
+    return _to_summary(db, project)
+
+
+@router.post("/{project_id}/move", response_model=ProjectSummary)
+def move_project(project_id: int, payload: ProjectMove, db: DbSession) -> ProjectSummary:
+    project = get_project_or_404(db, project_id)
+    move_sub_project(db, project, payload.parent_id)
+    db.commit()
+    db.refresh(project)
     return _to_summary(db, project)
 
 

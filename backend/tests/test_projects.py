@@ -65,6 +65,52 @@ def test_sub_project_cannot_have_sub_project(client):
     assert nested.status_code == 422
 
 
+def test_move_sub_project_to_another_root(client):
+    source = create_root(client, name="Source", group_name="Platform").json()
+    dest = create_root(client, name="Dest", group_name="Other").json()
+    sub = client.post(
+        f"/api/projects/{source['id']}/sub-projects",
+        json={"name": "Piece"},
+    ).json()
+
+    moved = client.post(
+        f"/api/projects/{sub['id']}/move",
+        json={"parent_id": dest["id"]},
+    )
+    assert moved.status_code == 200
+    body = moved.json()
+    assert body["parent_id"] == dest["id"]
+    assert body["parent_name"] == "Dest"
+    assert body["root_project_id"] == dest["id"]
+    assert body["group_name"] == "Other"
+
+    assert client.get(f"/api/projects/{source['id']}").json()["sub_projects"] == []
+    dest_subs = client.get(f"/api/projects/{dest['id']}").json()["sub_projects"]
+    assert [item["id"] for item in dest_subs] == [sub["id"]]
+
+    same = client.post(
+        f"/api/projects/{sub['id']}/move",
+        json={"parent_id": dest["id"]},
+    )
+    assert same.status_code == 422
+
+    root_move = client.post(
+        f"/api/projects/{source['id']}/move",
+        json={"parent_id": dest["id"]},
+    )
+    assert root_move.status_code == 422
+
+    holder = client.post(
+        f"/api/projects/{dest['id']}/sub-projects",
+        json={"name": "Holder"},
+    ).json()
+    onto_sub = client.post(
+        f"/api/projects/{sub['id']}/move",
+        json={"parent_id": holder["id"]},
+    )
+    assert onto_sub.status_code == 422
+
+
 def test_sub_project_inherits_group(client):
     root = create_root(client).json()
     sub = client.post(

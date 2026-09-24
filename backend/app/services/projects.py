@@ -98,6 +98,27 @@ def latest_activity_order():
     )
 
 
+def move_sub_project(db: Session, project: Project, new_parent_id: int) -> None:
+    if project.parent_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Only a sub-project can be moved",
+        )
+    if new_parent_id == project.parent_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Choose a different project",
+        )
+    new_parent = validate_parent_for_new_sub(db, new_parent_id)
+    old_parent = db.get(Project, project.parent_id)
+    project.parent_id = new_parent.id
+    project.root_project_id = new_parent.root_project_id or new_parent.id
+    touch_project(db, project)
+    touch_project(db, new_parent)
+    if old_parent is not None:
+        touch_project(db, old_parent)
+
+
 def validate_parent_for_new_sub(db: Session, parent_id: int) -> Project:
     parent = get_project_or_404(db, parent_id)
     if parent.parent_id is not None:
