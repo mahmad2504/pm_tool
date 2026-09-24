@@ -661,10 +661,10 @@ export function ProjectDetailPage() {
       )}
 
       {pickerOpen && (
-        <div className="modal-backdrop" onClick={() => setPickerOpen(false)} role="presentation">
-          <div className="modal modal--wide" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="add-resource-title">
             <header className="modal__header">
-              <h2>Add resource</h2>
+              <h2 id="add-resource-title">Add resource</h2>
               <button type="button" className="icon-btn" onClick={() => setPickerOpen(false)}>
                 ×
               </button>
