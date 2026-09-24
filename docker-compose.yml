@@ -1,14 +1,35 @@
 services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: pmtool
+      MYSQL_DATABASE: pmtool
+      MYSQL_USER: pm
+      MYSQL_PASSWORD: pmtool
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-ppmtool"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
   backend:
     build:
       context: ./backend
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: sqlite:////app/data/pm.db
+      DATABASE_URL: mysql+pymysql://pm:pmtool@mysql:3306/pmtool
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
     volumes:
       - ./backend/data:/app/data
+    depends_on:
+      mysql:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -22,6 +43,19 @@ services:
       retries: 5
       start_period: 10s
 
+  phpmyadmin:
+    image: phpmyadmin:5
+    ports:
+      - "8080:80"
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      PMA_USER: pm
+      PMA_PASSWORD: pmtool
+    depends_on:
+      mysql:
+        condition: service_healthy
+
   frontend:
     build:
       context: ./frontend
@@ -33,3 +67,6 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+
+volumes:
+  mysql_data:

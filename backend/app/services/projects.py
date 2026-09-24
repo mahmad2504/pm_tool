@@ -2,7 +2,9 @@ from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, select
+from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, aliased
+from sqlalchemy.sql.functions import FunctionElement
 
 from app.models import Group, Project, ProjectStatusReport, utc_now
 
@@ -65,6 +67,23 @@ def last_activity_at(db: Session, project: Project, children: list[Project] | No
     return max(_as_utc(stamp) for stamp in stamps)
 
 
+class _ScalarMax(FunctionElement):
+    inherit_cache = True
+    name = "scalar_max"
+
+
+@compiles(_ScalarMax)
+def _compile_scalar_max(element, compiler, **kwargs):
+    args = ", ".join(compiler.process(arg, **kwargs) for arg in element.clauses)
+    return f"max({args})"
+
+
+@compiles(_ScalarMax, "mysql")
+def _compile_scalar_max_mysql(element, compiler, **kwargs):
+    args = ", ".join(compiler.process(arg, **kwargs) for arg in element.clauses)
+    return f"greatest({args})"
+
+
 def latest_activity_order():
     child = aliased(Project)
     child_for_reports = aliased(Project)
@@ -91,7 +110,7 @@ def latest_activity_order():
         .correlate(Project)
         .scalar_subquery()
     )
-    return func.max(
+    return _ScalarMax(
         Project.updated_at,
         func.coalesce(child_updated, Project.updated_at),
         func.coalesce(report_updated, Project.updated_at),
