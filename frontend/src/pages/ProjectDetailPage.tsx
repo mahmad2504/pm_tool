@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   ProjectDetail,
@@ -11,7 +11,7 @@ import {
   detachResourceFromProject,
   getProject,
   groupIconSrc,
-  listResources,
+  listAllResources,
   listStatusReports,
   patchProject,
   updateProjectResourceUtilization,
@@ -43,6 +43,7 @@ export function ProjectDetailPage() {
   const [resourceSearch, setResourceSearch] = useState("");
   const [pickUtilization, setPickUtilization] = useState(100);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const pickerRequest = useRef(0);
 
   const load = useCallback(async () => {
     if (!projectId) return;
@@ -99,20 +100,27 @@ export function ProjectDetailPage() {
     }
   }
 
+  async function loadPickerResources(q: string) {
+    const requestId = ++pickerRequest.current;
+    try {
+      const items = await listAllResources({
+        q: q.trim() || undefined,
+        sort: "name",
+      });
+      if (requestId === pickerRequest.current) setAvailableResources(items);
+    } catch {
+      if (requestId === pickerRequest.current) setAvailableResources([]);
+    }
+  }
+
   async function openPicker() {
     setPickerOpen(true);
-    try {
-      const list = await listResources({ q: resourceSearch || undefined });
-      setAvailableResources(list.items);
-    } catch {
-      setAvailableResources([]);
-    }
+    await loadPickerResources(resourceSearch);
   }
 
   async function searchResources(q: string) {
     setResourceSearch(q);
-    const list = await listResources({ q: q || undefined });
-    setAvailableResources(list.items);
+    await loadPickerResources(q);
   }
 
   async function addResource(resourceId: number) {
@@ -200,6 +208,18 @@ export function ProjectDetailPage() {
             )}
           </p>
           <h1>{project.name}</h1>
+          <p className="project-card__updated">
+            Last updated{" "}
+            <time dateTime={project.updated_at}>
+              {new Date(project.updated_at).toLocaleString(undefined, {
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+              })}
+            </time>
+          </p>
           {project.group_name && (
             <p className="project-group">
               {groupIconSrc(project.group_icon_url) && (
@@ -438,8 +458,11 @@ export function ProjectDetailPage() {
             <ul className="picker-list">
               {availableResources.map((r) => (
                 <li key={r.id}>
-                  <span>
-                    {r.name} ({r.email})
+                  <span className="picker-person">
+                    <span className="picker-person__name">{r.name}</span>
+                    <span className="picker-person__email" title={r.email}>
+                      ({r.email})
+                    </span>
                   </span>
                   <button
                     type="button"

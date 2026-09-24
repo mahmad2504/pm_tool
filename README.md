@@ -76,3 +76,17 @@ npm run dev
 UI: http://localhost:5173
 
 Optional: set `VITE_API_URL` (default `http://localhost:8000`).
+
+## Docker
+
+From the repo root:
+
+```bash
+docker compose up --build
+```
+
+- UI: http://localhost:5173
+- API: http://localhost:8000
+- Docs: http://localhost:8000/docs
+
+The database and group icons are stored in `backend/data` on the host. The UI calls `http://localhost:8000` from the browser. To use another host address, set `VITE_API_URL` in `docker-compose.yml` (then rebuild the frontend) and add that UI origin to `CORS_ORIGINS`.

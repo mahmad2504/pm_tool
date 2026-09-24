@@ -1,6 +1,6 @@
 import csv
 import io
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import PlainTextResponse
@@ -67,6 +67,7 @@ def list_resources(
     q: str | None = None,
     project_id: int | None = None,
     over_utilized: bool = False,
+    sort: Literal["newest", "name"] = "newest",
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ResourceListResponse:
@@ -93,7 +94,11 @@ def list_resources(
         filters.append(Resource.id.in_(over_ids))
 
     count_stmt = select(func.count()).select_from(Resource)
-    list_stmt = select(Resource).order_by(Resource.created_at.desc(), Resource.id.desc())
+    if sort == "name":
+        order = (func.lower(Resource.name), Resource.id)
+    else:
+        order = (Resource.created_at.desc(), Resource.id.desc())
+    list_stmt = select(Resource).order_by(*order)
     if filters:
         count_stmt = count_stmt.where(*filters)
         list_stmt = list_stmt.where(*filters)

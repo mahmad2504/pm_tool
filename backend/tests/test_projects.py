@@ -239,3 +239,41 @@ def test_group_icon_on_project_tile(client):
 
     assert client.delete(f"/api/projects/{root['id']}").status_code == 204
     assert not icon_path.exists()
+
+
+def test_rename_group(client):
+    create_root(client, name="One", group_name="Altera")
+    create_root(client, name="Two", group_name="Arm")
+    groups = {group["name"]: group for group in client.get("/api/groups").json()}
+
+    renamed = client.patch(f"/api/groups/{groups['Altera']['id']}", json={"name": "Intel"})
+    assert renamed.status_code == 200
+    assert renamed.json()["name"] == "Intel"
+
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    names = {item["name"]: item["group_name"] for item in listed["items"]}
+    assert names["One"] == "Intel"
+    assert names["Two"] == "Arm"
+
+    conflict = client.patch(f"/api/groups/{groups['Altera']['id']}", json={"name": "arm"})
+    assert conflict.status_code == 409
+    blank = client.patch(f"/api/groups/{groups['Altera']['id']}", json={"name": "  "})
+    assert blank.status_code == 422
+
+
+def test_roots_are_ordered_by_last_activity(client):
+    older = create_root(client, name="Older", group_name="Platform").json()
+    newer = create_root(client, name="Newer", group_name="Platform").json()
+
+    report = client.post(
+        f"/api/projects/{older['id']}/status-reports",
+        json={"body": "Shipped the latest build"},
+    )
+    assert report.status_code == 201
+
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    names = [item["name"] for item in listed["items"]]
+    assert names.index("Older") < names.index("Newer")
+    older_item = next(item for item in listed["items"] if item["id"] == older["id"])
+    newer_item = next(item for item in listed["items"] if item["id"] == newer["id"])
+    assert older_item["updated_at"] >= newer_item["updated_at"]

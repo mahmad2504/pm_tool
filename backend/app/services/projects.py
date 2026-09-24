@@ -1,8 +1,10 @@
-from fastapi import HTTPException, status
-from sqlalchemy import select
-from sqlalchemy.orm import Session
+from datetime import datetime, timezone
 
-from app.models import Group, Project
+from fastapi import HTTPException, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session, aliased
+
+from app.models import Group, Project, ProjectStatusReport, utc_now
 
 def get_project_or_404(db: Session, project_id: int) -> Project:
     project = db.get(Project, project_id)
@@ -30,6 +32,70 @@ def effective_group(db: Session, project: Project) -> Group | None:
 def effective_group_name(db: Session, project: Project) -> str | None:
     group = effective_group(db, project)
     return group.name if group else None
+
+
+def touch_project(db: Session, project: Project) -> None:
+    now = utc_now()
+    project.updated_at = now
+    root_id = project.root_project_id
+    if root_id is not None and root_id != project.id:
+        root = db.get(Project, root_id)
+        if root is not None:
+            root.updated_at = now
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def last_activity_at(db: Session, project: Project, children: list[Project] | None = None) -> datetime:
+    if children is None:
+        children = list(db.scalars(select(Project).where(Project.parent_id == project.id)).all())
+    ids = [project.id, *[child.id for child in children]]
+    stamps = [project.updated_at, *[child.updated_at for child in children]]
+    report_at = db.scalar(
+        select(func.max(ProjectStatusReport.updated_at)).where(
+            ProjectStatusReport.project_id.in_(ids)
+        )
+    )
+    if report_at is not None:
+        stamps.append(report_at)
+    return max(_as_utc(stamp) for stamp in stamps)
+
+
+def latest_activity_order():
+    child = aliased(Project)
+    child_for_reports = aliased(Project)
+    report = aliased(ProjectStatusReport)
+    child_updated = (
+        select(func.max(child.updated_at))
+        .where(child.parent_id == Project.id)
+        .scalar_subquery()
+    )
+    family_ids = (
+        select(child_for_reports.id)
+        .where(
+            or_(
+                child_for_reports.id == Project.id,
+                child_for_reports.parent_id == Project.id,
+            )
+        )
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    report_updated = (
+        select(func.max(report.updated_at))
+        .where(report.project_id.in_(family_ids))
+        .correlate(Project)
+        .scalar_subquery()
+    )
+    return func.max(
+        Project.updated_at,
+        func.coalesce(child_updated, Project.updated_at),
+        func.coalesce(report_updated, Project.updated_at),
+    )
 
 
 def validate_parent_for_new_sub(db: Session, parent_id: int) -> Project:

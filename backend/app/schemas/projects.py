@@ -130,6 +130,7 @@ class ProjectSummary(BaseModel):
     root_project_id: int
     is_root: bool
     group_name: str | None
+    group_id: int | None = None
     group_icon_url: str | None = None
     resource_count: int
     status_report_count: int
@@ -220,3 +221,15 @@ class GroupRead(BaseModel):
     name: str
     project_count: int
     icon_url: str | None = None
+
+
+class GroupUpdate(BaseModel):
+    name: str = Field(min_length=1, max_length=255)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        trimmed = value.strip()
+        if not trimmed:
+            raise ValueError("Cannot be blank")
+        return trimmed

@@ -2,12 +2,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Group, Project
-from app.schemas.projects import GroupRead
+from app.models import Group
+from app.schemas.projects import GroupRead, GroupUpdate
 from app.services.group_icons import MEDIA_TYPES, group_icon_url, icon_file_path, save_group_icon
 from app.services.groups import count_roots_in_group
 
@@ -46,6 +46,23 @@ def get_group_icon(group_id: int, db: DbSession) -> FileResponse:
     path = icon_file_path(group.icon_filename)
     media_type = MEDIA_TYPES.get(path.suffix.lower(), "application/octet-stream")
     return FileResponse(path, media_type=media_type)
+
+
+@router.patch("/{group_id}", response_model=GroupRead)
+def update_group(group_id: int, payload: GroupUpdate, db: DbSession) -> GroupRead:
+    group = _get_group_or_404(db, group_id)
+    taken = db.scalar(
+        select(Group.id).where(func.lower(Group.name) == payload.name.lower(), Group.id != group.id)
+    )
+    if taken is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A group with that name already exists",
+        )
+    group.name = payload.name
+    db.commit()
+    db.refresh(group)
+    return _to_group_read(db, group)
 
 
 @router.post("/{group_id}/icon", response_model=GroupRead)

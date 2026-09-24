@@ -54,6 +54,18 @@ def test_list_with_filters_and_pagination(client, db_session):
     assert len(page_resp.json()["items"]) == 1
 
 
+def test_list_resources_sorted_by_name(client):
+    create_resource(client, name="zeta", email="zeta@example.com")
+    create_resource(client, name="Alpha", email="alpha@example.com")
+    create_resource(client, name="beta", email="beta@example.com")
+
+    named = client.get("/api/resources", params={"sort": "name"}).json()
+    assert [item["name"] for item in named["items"]] == ["Alpha", "beta", "zeta"]
+
+    newest = client.get("/api/resources").json()
+    assert newest["items"][0]["name"] == "beta"
+
+
 def test_update_and_patch(client):
     created = create_resource(client).json()
 

@@ -8,19 +8,47 @@ import {
   groupIconSrc,
   listGroups,
   listProjects,
+  updateGroup,
   uploadGroupIcon,
 } from "../api";
 import { AppShell } from "../layout/AppShell";
 
-function GroupMark({ name, iconUrl }: { name: string; iconUrl: string | null }) {
+function formatUpdated(value: string): string {
+  return new Date(value).toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
+
+function GroupMark({
+  name,
+  iconUrl,
+  onClick,
+}: {
+  name: string;
+  iconUrl: string | null;
+  onClick: () => void;
+}) {
   const src = groupIconSrc(iconUrl);
-  if (src) {
-    return <img className="group-mark" src={src} alt={name} title={name} />;
-  }
   return (
-    <span className="group-mark group-mark--empty" title={name} aria-hidden>
-      {name.trim().charAt(0).toUpperCase()}
-    </span>
+    <button
+      type="button"
+      className="group-mark-btn"
+      onClick={onClick}
+      aria-label={`Edit group ${name}`}
+      title={name}
+    >
+      {src ? (
+        <img className="group-mark" src={src} alt="" />
+      ) : (
+        <span className="group-mark group-mark--empty" aria-hidden>
+          {name.trim().charAt(0).toUpperCase()}
+        </span>
+      )}
+    </button>
   );
 }
 
@@ -46,6 +74,11 @@ export function ProjectsPage() {
     description: "",
     group_name: "",
   });
+  const [groupEditor, setGroupEditor] = useState<GroupItem | null>(null);
+  const [groupName, setGroupName] = useState("");
+  const [iconFile, setIconFile] = useState<File | null>(null);
+  const [iconPreview, setIconPreview] = useState<string | null>(null);
+  const [groupSaving, setGroupSaving] = useState(false);
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
@@ -105,10 +138,52 @@ export function ProjectsPage() {
     }
   }
 
-  async function handleIconUpload(groupId: number, file: File) {
+  function closeGroupEditor() {
+    if (iconPreview) URL.revokeObjectURL(iconPreview);
+    setGroupEditor(null);
+    setGroupName("");
+    setIconFile(null);
+    setIconPreview(null);
+  }
+
+  function openGroupEditor(project: ProjectSummary) {
+    if (project.group_id == null || !project.group_name) return;
+    const known = groups.find((group) => group.id === project.group_id);
+    setGroupEditor(
+      known ?? {
+        id: project.group_id,
+        name: project.group_name,
+        project_count: 0,
+        icon_url: project.group_icon_url,
+      },
+    );
+    setGroupName(project.group_name);
+    setIconFile(null);
+    if (iconPreview) URL.revokeObjectURL(iconPreview);
+    setIconPreview(null);
+  }
+
+  function chooseGroupIcon(file: File) {
+    if (iconPreview) URL.revokeObjectURL(iconPreview);
+    setIconFile(file);
+    setIconPreview(URL.createObjectURL(file));
+  }
+
+  async function saveGroup(e: FormEvent) {
+    e.preventDefault();
+    if (!groupEditor) return;
+    const name = groupName.trim();
+    if (!name) return;
+    setGroupSaving(true);
     setError(null);
     try {
-      await uploadGroupIcon(groupId, file);
+      if (name !== groupEditor.name) {
+        await updateGroup(groupEditor.id, name);
+      }
+      if (iconFile) {
+        await uploadGroupIcon(groupEditor.id, iconFile);
+      }
+      closeGroupEditor();
       const [nextGroups, data] = await Promise.all([
         listGroups(),
         listProjects({
@@ -121,7 +196,9 @@ export function ProjectsPage() {
       setProjects(data.items);
       setTotal(data.total);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Icon upload failed");
+      setError(err instanceof Error ? err.message : "Could not update group");
+    } finally {
+      setGroupSaving(false);
     }
   }
 
@@ -198,29 +275,6 @@ export function ProjectsPage() {
           </select>
         </div>
 
-        {groups.length > 0 && (
-          <ul className="group-icon-list">
-            {groups.map((group) => (
-              <li key={group.id} className="group-icon-list__item">
-                <GroupMark name={group.name} iconUrl={group.icon_url} />
-                <span>{group.name}</span>
-                <label className="btn btn--ghost btn--sm group-icon-list__upload">
-                  {group.icon_url ? "Change icon" : "Upload icon"}
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp,image/gif"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = "";
-                      if (file) void handleIconUpload(group.id, file);
-                    }}
-                  />
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
-
         {loading ? (
           <div className="skeleton-grid">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -240,14 +294,18 @@ export function ProjectsPage() {
             {projects.map((p) => (
               <li key={p.id} className="resource-card project-card">
                 <div className="project-card__head">
-                  {p.group_name && (
-                    <GroupMark name={p.group_name} iconUrl={p.group_icon_url} />
+                  {p.group_name && p.group_id != null && (
+                    <GroupMark
+                      name={p.group_name}
+                      iconUrl={p.group_icon_url}
+                      onClick={() => openGroupEditor(p)}
+                    />
                   )}
                   <h3 className="project-card__title">
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
                   </h3>
                 </div>
-                <p className="resource-card__notes">
+                <p className="project-card__description">
                   {p.description || "No description"}
                 </p>
                 {p.sub_projects.length > 0 && (
@@ -259,6 +317,9 @@ export function ProjectsPage() {
                     ))}
                   </ul>
                 )}
+                <p className="project-card__updated">
+                  Last updated <time dateTime={p.updated_at}>{formatUpdated(p.updated_at)}</time>
+                </p>
                 <p className="project-card__meta">
                   <button
                     type="button"
@@ -280,6 +341,68 @@ export function ProjectsPage() {
         )}
         <p className="muted list-footer">{total} root project(s)</p>
       </section>
+
+      {groupEditor && (
+        <div className="modal-backdrop" onClick={closeGroupEditor} role="presentation">
+          <div
+            className="modal"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="group-editor-title"
+          >
+            <header className="modal__header">
+              <h2 id="group-editor-title">Group</h2>
+              <button type="button" className="icon-btn" onClick={closeGroupEditor}>
+                ×
+              </button>
+            </header>
+            <form className="modal__form" onSubmit={(event) => void saveGroup(event)}>
+              <div className="group-editor__icon">
+                {iconPreview || groupIconSrc(groupEditor.icon_url) ? (
+                  <img
+                    className="group-mark group-mark--lg"
+                    src={iconPreview ?? groupIconSrc(groupEditor.icon_url) ?? undefined}
+                    alt=""
+                  />
+                ) : (
+                  <span className="group-mark group-mark--empty group-mark--lg" aria-hidden>
+                    {groupName.trim().charAt(0).toUpperCase() || "?"}
+                  </span>
+                )}
+                <label className="btn btn--ghost btn--sm group-editor__upload">
+                  {groupEditor.icon_url || iconFile ? "Change icon" : "Upload icon"}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) chooseGroupIcon(file);
+                    }}
+                  />
+                </label>
+              </div>
+              <label>
+                Name
+                <input
+                  required
+                  value={groupName}
+                  onChange={(event) => setGroupName(event.target.value)}
+                />
+              </label>
+              <footer className="modal__footer">
+                <button type="button" className="btn btn--ghost" onClick={closeGroupEditor}>
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn--primary" disabled={groupSaving}>
+                  {groupSaving ? "Saving…" : "Save"}
+                </button>
+              </footer>
+            </form>
+          </div>
+        </div>
+      )}
 
       {peopleTarget && (
         <div

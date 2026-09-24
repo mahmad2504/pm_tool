@@ -32,6 +32,9 @@ from app.services.projects import (
     effective_group,
     get_project_or_404,
     get_root,
+    last_activity_at,
+    latest_activity_order,
+    touch_project,
     validate_parent_for_new_sub,
 )
 
@@ -97,13 +100,14 @@ def _to_summary(
         root_project_id=project.root_project_id or project.id,
         is_root=project.parent_id is None,
         group_name=group.name if group else None,
+        group_id=group.id if group else None,
         group_icon_url=group_icon_url(group),
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
         sub_projects=_sub_project_summaries(children),
         created_at=project.created_at,
-        updated_at=project.updated_at,
+        updated_at=last_activity_at(db, project, children),
     )
 
 
@@ -154,7 +158,9 @@ def list_projects(
     count_stmt = select(func.count()).select_from(stmt.subquery())
     total = db.scalar(count_stmt) or 0
     items = db.scalars(
-        stmt.order_by(Project.created_at.desc(), Project.id.desc()).offset(offset).limit(limit)
+        stmt.order_by(latest_activity_order().desc(), Project.id.desc())
+        .offset(offset)
+        .limit(limit)
     ).all()
     ids = [p.id for p in items]
     children_by_parent: dict[int, list[Project]] = {project_id: [] for project_id in ids}
@@ -201,6 +207,8 @@ def create_sub_project(
         root_project_id=parent.root_project_id or parent.id,
     )
     db.add(project)
+    db.flush()
+    touch_project(db, parent)
     db.commit()
     db.refresh(project)
     response.headers["Location"] = f"/api/projects/{project.id}"
@@ -267,7 +275,7 @@ def get_project(
         ],
         recent_status_reports=[StatusReportRead.model_validate(r) for r in recent],
         created_at=project.created_at,
-        updated_at=project.updated_at,
+        updated_at=last_activity_at(db, project, list(children)),
     )
 
 
@@ -282,7 +290,7 @@ def update_project(project_id: int, payload: ProjectUpdateRoot, db: DbSession) -
     project.name = payload.name
     project.description = payload.description
     assign_root_group(db, project, payload.group_name)
-    project.updated_at = utc_now()
+    touch_project(db, project)
     db.commit()
     db.refresh(project)
     return _to_summary(db, project)
@@ -308,7 +316,7 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
     if "description" in data:
         project.description = data["description"]
 
-    project.updated_at = utc_now()
+    touch_project(db, project)
     db.commit()
     db.refresh(project)
     return _to_summary(db, project)
@@ -317,6 +325,9 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(project_id: int, db: DbSession) -> None:
     project = get_project_or_404(db, project_id)
+    if project.parent_id is not None:
+        root = get_root(db, project)
+        touch_project(db, root)
     old_group_id = delete_project_subtree(db, project)
     db.commit()
     maybe_delete_empty_group(db, old_group_id)
@@ -338,6 +349,7 @@ def attach_resource(
     )
     if existing:
         existing.utilization_percent = payload.utilization_percent
+        touch_project(db, project)
         db.commit()
         response.status_code = status.HTTP_200_OK
         return {"status": "updated"}
@@ -349,6 +361,7 @@ def attach_resource(
             utilization_percent=payload.utilization_percent,
         )
     )
+    touch_project(db, project)
     db.commit()
     return {"status": "assigned"}
 
@@ -360,7 +373,7 @@ def update_project_resource(
     payload: ProjectResourceUpdate,
     db: DbSession,
 ) -> AssignedResourceRead:
-    get_project_or_404(db, project_id)
+    project = get_project_or_404(db, project_id)
     link = db.get(ProjectResource, {"project_id": project_id, "resource_id": resource_id})
     if link is None:
         raise HTTPException(status_code=404, detail="Resource not assigned to this project")
@@ -368,6 +381,7 @@ def update_project_resource(
     if resource is None:
         raise HTTPException(status_code=404, detail="Resource not found")
     link.utilization_percent = payload.utilization_percent
+    touch_project(db, project)
     db.commit()
     return AssignedResourceRead(
         resource=ResourceRead.model_validate(resource),
@@ -380,11 +394,12 @@ def update_project_resource(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def detach_resource(project_id: int, resource_id: int, db: DbSession) -> None:
-    get_project_or_404(db, project_id)
+    project = get_project_or_404(db, project_id)
     link = db.get(ProjectResource, {"project_id": project_id, "resource_id": resource_id})
     if link is None:
         raise HTTPException(status_code=404, detail="Resource not assigned to this project")
     db.delete(link)
+    touch_project(db, project)
     db.commit()
 
 
@@ -399,6 +414,7 @@ def create_status_report(
     project = get_project_or_404(db, project_id)
     report = ProjectStatusReport(project_id=project.id, body=payload.body)
     db.add(report)
+    touch_project(db, project)
     db.commit()
     db.refresh(report)
     return report
@@ -414,12 +430,13 @@ def update_status_report(
     payload: StatusReportUpdate,
     db: DbSession,
 ) -> ProjectStatusReport:
-    get_project_or_404(db, project_id)
+    project = get_project_or_404(db, project_id)
     report = db.get(ProjectStatusReport, report_id)
     if report is None or report.project_id != project_id:
         raise HTTPException(status_code=404, detail="Status report not found")
     report.body = payload.body
     report.updated_at = utc_now()
+    touch_project(db, project)
     db.commit()
     db.refresh(report)
     return report
@@ -430,9 +447,10 @@ def update_status_report(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_status_report(project_id: int, report_id: int, db: DbSession) -> None:
-    get_project_or_404(db, project_id)
+    project = get_project_or_404(db, project_id)
     report = db.get(ProjectStatusReport, report_id)
     if report is None or report.project_id != project_id:
         raise HTTPException(status_code=404, detail="Status report not found")
     db.delete(report)
+    touch_project(db, project)
     db.commit()

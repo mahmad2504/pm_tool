@@ -78,16 +78,38 @@ export function listResources(params?: {
   role?: ResourceRole;
   project_id?: number;
   limit?: number;
+  offset?: number;
   over_utilized?: boolean;
+  sort?: "name" | "newest";
 }): Promise<ResourceListResponse> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.role) search.set("role", params.role);
   if (params?.project_id) search.set("project_id", String(params.project_id));
   if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
   if (params?.over_utilized) search.set("over_utilized", "true");
+  if (params?.sort) search.set("sort", params.sort);
   const query = search.toString();
   return request(`/api/resources${query ? `?${query}` : ""}`);
+}
+
+export async function listAllResources(params?: {
+  q?: string;
+  sort?: "name" | "newest";
+}): Promise<Resource[]> {
+  const pageSize = 200;
+  const items: Resource[] = [];
+  let offset = 0;
+  let total = Number.POSITIVE_INFINITY;
+  while (items.length < total) {
+    const page = await listResources({ ...params, limit: pageSize, offset });
+    items.push(...page.items);
+    total = page.total;
+    if (page.items.length === 0) break;
+    offset += page.items.length;
+  }
+  return items;
 }
 
 export function listRoles(): Promise<RoleItem[]> {
@@ -153,6 +175,7 @@ export interface ProjectSummary {
   root_project_id: number;
   is_root: boolean;
   group_name: string | null;
+  group_id: number | null;
   group_icon_url: string | null;
   resource_count: number;
   status_report_count: number;
@@ -195,6 +218,14 @@ export function listGroups(): Promise<GroupItem[]> {
 export function groupIconSrc(iconUrl: string | null | undefined): string | null {
   if (!iconUrl) return null;
   return `${API_BASE}${iconUrl}`;
+}
+
+export function updateGroup(groupId: number, name: string): Promise<GroupItem> {
+  return request(`/api/groups/${groupId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
 }
 
 export async function uploadGroupIcon(groupId: number, file: File): Promise<GroupItem> {
