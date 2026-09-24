@@ -154,6 +154,7 @@ def test_resource_project_utilization(client, db_session):
     assert detail["project_assignments"][0]["project_name"] == "Apollo"
     assert detail["project_assignments"][0]["utilization_percent"] == 40
     assert detail["project_assignments"][0]["project_role"] == "member"
+    assert detail["project_assignments"][0]["onboarded"] is False
 
 
 def test_over_utilized_resources(client, db_session):

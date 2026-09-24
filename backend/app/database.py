@@ -56,6 +56,22 @@ def run_sqlite_migrations() -> None:
                     "VARCHAR(64) NOT NULL DEFAULT 'member'"
                 )
             )
+        if "onboarded" not in pr_columns:
+            conn.execute(
+                text(
+                    "ALTER TABLE project_resources ADD COLUMN onboarded "
+                    "INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+        if "projects" in inspector.get_table_names():
+            project_columns = {col["name"] for col in inspector.get_columns("projects")}
+            if "status" not in project_columns:
+                conn.execute(
+                    text(
+                        "ALTER TABLE projects ADD COLUMN status "
+                        "VARCHAR(32) NOT NULL DEFAULT 'in_progress'"
+                    )
+                )
 
 
 def get_db() -> Generator:

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.models import Group, Project, ProjectResource, ProjectStatusReport, Resource, utc_now
+from app.roles import ProjectLifecycle
 from app.schemas.projects import (
     AssignedResourceRead,
     ProjectCreateRoot,
@@ -72,7 +73,12 @@ def _resource_count(db: Session, project_ids: list[int]) -> int:
 def _sub_project_summaries(children: list[Project]) -> list[SubProjectSummary]:
     ordered = sorted(children, key=lambda child: (child.name.lower(), child.id))
     return [
-        SubProjectSummary(id=child.id, name=child.name, description=child.description)
+        SubProjectSummary(
+            id=child.id,
+            name=child.name,
+            description=child.description,
+            status=ProjectLifecycle(child.status),
+        )
         for child in ordered
     ]
 
@@ -104,6 +110,7 @@ def _to_summary(
         group_name=group.name if group else None,
         group_id=group.id if group else None,
         group_icon_url=group_icon_url(group),
+        status=ProjectLifecycle(project.status),
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
@@ -164,6 +171,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
         description=project.description,
         group_id=group.id if group else None,
         group_name=group.name if group else None,
+        status=ProjectLifecycle(project.status),
         created_at=project.created_at,
         updated_at=project.updated_at,
         resources=list_assigned_resources(db, project.id),
@@ -177,6 +185,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
                 id=child.id,
                 name=child.name,
                 description=child.description,
+                status=ProjectLifecycle(child.status),
                 created_at=child.created_at,
                 updated_at=child.updated_at,
                 resources=list_assigned_resources(db, child.id),
@@ -255,6 +264,7 @@ def create_root_project(
         description=payload.description,
         parent_id=None,
         group_id=None,
+        status=payload.status.value,
     )
     db.add(project)
     db.flush()
@@ -277,6 +287,7 @@ def create_sub_project(
         parent_id=parent.id,
         group_id=None,
         root_project_id=parent.root_project_id or parent.id,
+        status=payload.status.value,
     )
     db.add(project)
     db.flush()
@@ -341,9 +352,12 @@ def get_project(
         is_root=project.parent_id is None,
         group_name=group.name if group else None,
         group_icon_url=group_icon_url(group),
+        status=ProjectLifecycle(project.status),
         resources=assignments,
         sub_projects=[
-            SubProjectSummary(id=c.id, name=c.name, description=c.description) for c in children
+            SubProjectSummary(
+                id=c.id, name=c.name, description=c.description, status=ProjectLifecycle(c.status)
+            ) for c in children
         ],
         recent_status_reports=[StatusReportRead.model_validate(r) for r in recent],
         created_at=project.created_at,
@@ -387,6 +401,8 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
         project.name = data["name"]
     if "description" in data:
         project.description = data["description"]
+    if "status" in data and data["status"] is not None:
+        project.status = data["status"].value
 
     touch_project(db, project)
     db.commit()
@@ -422,6 +438,7 @@ def attach_resource(
     if existing:
         existing.utilization_percent = payload.utilization_percent
         existing.project_role = payload.project_role.value
+        existing.onboarded = payload.onboarded
         touch_project(db, project)
         db.commit()
         response.status_code = status.HTTP_200_OK
@@ -433,6 +450,7 @@ def attach_resource(
             resource_id=resource.id,
             utilization_percent=payload.utilization_percent,
             project_role=payload.project_role.value,
+            onboarded=payload.onboarded,
         )
     )
     touch_project(db, project)
@@ -458,12 +476,15 @@ def update_project_resource(
         link.utilization_percent = payload.utilization_percent
     if payload.project_role is not None:
         link.project_role = payload.project_role.value
+    if payload.onboarded is not None:
+        link.onboarded = payload.onboarded
     touch_project(db, project)
     db.commit()
     return AssignedResourceRead(
         resource=ResourceRead.model_validate(resource),
         utilization_percent=link.utilization_percent,
         project_role=link.project_role,
+        onboarded=link.onboarded,
     )
 
 
@@ -491,6 +512,9 @@ def create_status_report(
 ) -> ProjectStatusReport:
     project = get_project_or_404(db, project_id)
     report = ProjectStatusReport(project_id=project.id, body=payload.body)
+    if payload.created_at is not None:
+        report.created_at = payload.created_at
+        report.updated_at = payload.created_at
     db.add(report)
     touch_project(db, project)
     db.commit()

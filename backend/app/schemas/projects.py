@@ -2,7 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.roles import ProjectRole
+from app.roles import ProjectLifecycle, ProjectRole
 from app.schemas.resources import ResourceRead
 
 
@@ -17,6 +17,7 @@ class ProjectCreateRoot(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     group_name: str = Field(min_length=1, max_length=255)
+    status: ProjectLifecycle = ProjectLifecycle.assessment
 
     @field_validator("name")
     @classmethod
@@ -43,6 +44,7 @@ class ProjectCreateRoot(BaseModel):
 class ProjectCreateSub(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
+    status: ProjectLifecycle = ProjectLifecycle.assessment
 
     @field_validator("name")
     @classmethod
@@ -89,6 +91,7 @@ class ProjectPatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     description: str | None = None
     group_name: str | None = Field(default=None, max_length=255)
+    status: ProjectLifecycle | None = None
 
     @field_validator("name")
     @classmethod
@@ -120,6 +123,7 @@ class SubProjectSummary(BaseModel):
     id: int
     name: str
     description: str | None
+    status: ProjectLifecycle
 
 
 class ProjectSummary(BaseModel):
@@ -133,6 +137,7 @@ class ProjectSummary(BaseModel):
     group_name: str | None
     group_id: int | None = None
     group_icon_url: str | None = None
+    status: ProjectLifecycle
     resource_count: int
     status_report_count: int
     sub_project_count: int
@@ -157,6 +162,7 @@ class ProjectDetail(BaseModel):
     is_root: bool
     group_name: str | None
     group_icon_url: str | None = None
+    status: ProjectLifecycle
     resources: list["AssignedResourceRead"]
     sub_projects: list[SubProjectSummary]
     recent_status_reports: list["StatusReportRead"] = []
@@ -168,27 +174,35 @@ class AssignedResourceRead(BaseModel):
     resource: ResourceRead
     utilization_percent: int = Field(ge=0, le=100)
     project_role: ProjectRole
+    onboarded: bool = False
 
 
 class ProjectResourceAttach(BaseModel):
     resource_id: int
     utilization_percent: int = Field(default=100, ge=0, le=100)
     project_role: ProjectRole = ProjectRole.member
+    onboarded: bool = False
 
 
 class ProjectResourceUpdate(BaseModel):
     utilization_percent: int | None = Field(default=None, ge=0, le=100)
     project_role: ProjectRole | None = None
+    onboarded: bool | None = None
 
     @model_validator(mode="after")
     def require_a_change(self) -> "ProjectResourceUpdate":
-        if self.utilization_percent is None and self.project_role is None:
-            raise ValueError("Provide utilization_percent or project_role")
+        if (
+            self.utilization_percent is None
+            and self.project_role is None
+            and self.onboarded is None
+        ):
+            raise ValueError("Provide utilization_percent, project_role, or onboarded")
         return self
 
 
 class StatusReportCreate(BaseModel):
     body: str = Field(min_length=1)
+    created_at: datetime | None = None
 
     @field_validator("body")
     @classmethod
@@ -230,6 +244,7 @@ class ProjectExportSubProject(BaseModel):
     id: int
     name: str
     description: str | None
+    status: ProjectLifecycle
     created_at: datetime
     updated_at: datetime
     resources: list[AssignedResourceRead]
@@ -243,6 +258,7 @@ class ProjectExportRecord(BaseModel):
     description: str | None
     group_id: int | None
     group_name: str | None
+    status: ProjectLifecycle
     created_at: datetime
     updated_at: datetime
     resources: list[AssignedResourceRead]

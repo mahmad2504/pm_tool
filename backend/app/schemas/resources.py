@@ -89,6 +89,7 @@ class ResourceProjectAssignment(BaseModel):
     group_name: str | None
     utilization_percent: int = Field(ge=0, le=100)
     project_role: ProjectRole = ProjectRole.member
+    onboarded: bool = False
 
 
 class ResourceWithUtilization(ResourceRead):

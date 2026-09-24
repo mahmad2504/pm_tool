@@ -32,6 +32,21 @@ def roles_for_api() -> list[dict[str, str]]:
     return [{"code": role.value, "label": ROLE_LABELS[role]} for role in ResourceRole]
 
 
+class ProjectLifecycle(str, Enum):
+    assessment = "assessment"
+    in_progress = "in_progress"
+    closing = "closing"
+    completed = "completed"
+
+
+PROJECT_LIFECYCLE_LABELS: dict[ProjectLifecycle, str] = {
+    ProjectLifecycle.assessment: "Assessment",
+    ProjectLifecycle.in_progress: "In Progress",
+    ProjectLifecycle.closing: "Closing",
+    ProjectLifecycle.completed: "Completed",
+}
+
+
 class ProjectRole(str, Enum):
     member = "member"
     lead = "lead"

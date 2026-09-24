@@ -25,6 +25,19 @@ export function projectRoleLabel(code: ProjectRole): string {
   return PROJECT_ROLES.find((role) => role.code === code)?.label ?? code;
 }
 
+export type ProjectStatus = "assessment" | "in_progress" | "closing" | "completed";
+
+export const PROJECT_STATUSES: { code: ProjectStatus; label: string }[] = [
+  { code: "assessment", label: "Assessment" },
+  { code: "in_progress", label: "In Progress" },
+  { code: "closing", label: "Closing" },
+  { code: "completed", label: "Completed" },
+];
+
+export function projectStatusLabel(code: ProjectStatus): string {
+  return PROJECT_STATUSES.find((status) => status.code === code)?.label ?? code;
+}
+
 export interface RoleItem {
   code: ResourceRole;
   label: string;
@@ -37,6 +50,7 @@ export interface ResourceProjectAssignment {
   group_name: string | null;
   utilization_percent: number;
   project_role: ProjectRole;
+  onboarded: boolean;
 }
 
 export interface Resource {
@@ -67,6 +81,7 @@ export interface AssignedResource {
   resource: Resource;
   utilization_percent: number;
   project_role: ProjectRole;
+  onboarded: boolean;
 }
 
 export interface ImportResult {
@@ -189,6 +204,7 @@ export interface SubProjectSummary {
   id: number;
   name: string;
   description: string | null;
+  status: ProjectStatus;
 }
 
 export interface ProjectSummary {
@@ -202,6 +218,7 @@ export interface ProjectSummary {
   group_name: string | null;
   group_id: number | null;
   group_icon_url: string | null;
+  status: ProjectStatus;
   resource_count: number;
   status_report_count: number;
   sub_project_count: number;
@@ -229,6 +246,7 @@ export interface ProjectDetail {
   is_root: boolean;
   group_name: string | null;
   group_icon_url: string | null;
+  status: ProjectStatus;
   resources: AssignedResource[];
   sub_projects: SubProjectSummary[];
   recent_status_reports: StatusReport[];
@@ -330,6 +348,7 @@ export function createRootProject(data: {
   name: string;
   description?: string | null;
   group_name: string;
+  status: ProjectStatus;
 }): Promise<ProjectSummary> {
   return request("/api/projects", {
     method: "POST",
@@ -340,7 +359,7 @@ export function createRootProject(data: {
 
 export function createSubProject(
   parentId: number,
-  data: { name: string; description?: string | null },
+  data: { name: string; description?: string | null; status?: ProjectStatus },
 ): Promise<ProjectSummary> {
   return request(`/api/projects/${parentId}/sub-projects`, {
     method: "POST",
@@ -351,7 +370,12 @@ export function createSubProject(
 
 export function patchProject(
   id: number,
-  data: { name?: string; description?: string | null; group_name?: string },
+  data: {
+    name?: string;
+    description?: string | null;
+    group_name?: string;
+    status?: ProjectStatus;
+  },
 ): Promise<ProjectSummary> {
   return request(`/api/projects/${id}`, {
     method: "PATCH",
@@ -369,6 +393,7 @@ export function attachResourceToProject(
   resourceId: number,
   utilizationPercent: number = 100,
   projectRole: ProjectRole = "member",
+  onboarded: boolean = false,
 ): Promise<void> {
   return request(`/api/projects/${projectId}/resources`, {
     method: "POST",
@@ -377,6 +402,7 @@ export function attachResourceToProject(
       resource_id: resourceId,
       utilization_percent: utilizationPercent,
       project_role: projectRole,
+      onboarded,
     }),
   });
 }
@@ -405,6 +431,18 @@ export function updateProjectResourceRole(
   });
 }
 
+export function updateProjectResourceOnboarded(
+  projectId: number,
+  resourceId: number,
+  onboarded: boolean,
+): Promise<AssignedResource> {
+  return request(`/api/projects/${projectId}/resources/${resourceId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ onboarded }),
+  });
+}
+
 export function detachResourceFromProject(
   projectId: number,
   resourceId: number,
@@ -429,11 +467,15 @@ export function listStatusReports(
 export function createStatusReport(
   projectId: number,
   body: string,
+  createdAt?: string,
 ): Promise<StatusReport> {
   return request(`/api/projects/${projectId}/status-reports`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      ...(createdAt ? { created_at: createdAt } : {}),
+    }),
   });
 }
 

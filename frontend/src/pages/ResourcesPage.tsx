@@ -23,6 +23,7 @@ import {
   updateResource,
 } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { OnboardedIcon } from "../components/OnboardedIcon";
 import { ResourceModal } from "../components/ResourceModal";
 import { RoleBadge } from "../components/RoleBadge";
 import { Link } from "react-router-dom";
@@ -384,6 +385,7 @@ export function ResourcesPage() {
                             {" "}
                             — {projectRoleLabel(a.project_role)} — {a.utilization_percent}%
                           </span>
+                          {a.onboarded ? <OnboardedIcon /> : null}
                         </li>
                       ))}
                     </ul>

@@ -2,8 +2,10 @@ import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   PROJECT_ROLES,
+  PROJECT_STATUSES,
   ProjectDetail,
   ProjectRole,
+  ProjectStatus,
   Resource,
   StatusReport,
   attachResourceToProject,
@@ -17,17 +19,36 @@ import {
   listAllResources,
   listStatusReports,
   patchProject,
+  updateProjectResourceOnboarded,
   updateProjectResourceRole,
   updateProjectResourceUtilization,
   updateStatusReport,
 } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
-import { RoleBadge } from "../components/RoleBadge";
+import { OnboardedIcon } from "../components/OnboardedIcon";
+import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
+import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
 import { projectListLabel } from "../utils/projectLabel";
 
 const REPORT_PAGE_SIZE = 5;
+
+const PROJECT_ROLE_LIST_RANK: Partial<Record<ProjectRole, number>> = {
+  director: 0,
+  lead: 1,
+};
+
+function compareProjectResources(
+  a: { project_role: ProjectRole; resource: { name: string } },
+  b: { project_role: ProjectRole; resource: { name: string } },
+): number {
+  const rank =
+    (PROJECT_ROLE_LIST_RANK[a.project_role] ?? 2) -
+    (PROJECT_ROLE_LIST_RANK[b.project_role] ?? 2);
+  if (rank !== 0) return rank;
+  return a.resource.name.localeCompare(b.resource.name);
+}
 
 export function ProjectDetailPage() {
   const { id } = useParams();
@@ -42,14 +63,25 @@ export function ProjectDetailPage() {
   const [reportPage, setReportPage] = useState(0);
   const [openReport, setOpenReport] = useState<StatusReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editMeta, setEditMeta] = useState({ name: "", description: "", group_name: "" });
-  const [subForm, setSubForm] = useState({ name: "", description: "" });
+  const [editMeta, setEditMeta] = useState({
+    name: "",
+    description: "",
+    group_name: "",
+    status: "assessment" as ProjectStatus,
+  });
+  const [subForm, setSubForm] = useState({
+    name: "",
+    description: "",
+    status: "assessment" as ProjectStatus,
+  });
   const [reportBody, setReportBody] = useState("");
+  const [reportAt, setReportAt] = useState(currentDatetimeLocalValue);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [availableResources, setAvailableResources] = useState<Resource[]>([]);
   const [resourceSearch, setResourceSearch] = useState("");
   const [pickUtilization, setPickUtilization] = useState(100);
   const [pickRole, setPickRole] = useState<ProjectRole>("member");
+  const [pickOnboarded, setPickOnboarded] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const pickerRequest = useRef(0);
 
@@ -63,6 +95,7 @@ export function ProjectDetailPage() {
         name: detail.name,
         description: detail.description ?? "",
         group_name: detail.group_name ?? "",
+        status: detail.status,
       });
       const rep = await listStatusReports(
         projectId,
@@ -88,9 +121,15 @@ export function ProjectDetailPage() {
     e.preventDefault();
     if (!project) return;
     try {
-      const payload: { name: string; description: string | null; group_name?: string } = {
+      const payload: {
+        name: string;
+        description: string | null;
+        group_name?: string;
+        status: ProjectStatus;
+      } = {
         name: editMeta.name.trim(),
         description: editMeta.description.trim() || null,
+        status: editMeta.status,
       };
       if (project.is_root) {
         payload.group_name = editMeta.group_name.trim();
@@ -109,8 +148,9 @@ export function ProjectDetailPage() {
       await createSubProject(project.id, {
         name: subForm.name.trim(),
         description: subForm.description.trim() || null,
+        status: subForm.status,
       });
-      setSubForm({ name: "", description: "" });
+      setSubForm({ name: "", description: "", status: "assessment" });
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add sub-project");
@@ -133,6 +173,7 @@ export function ProjectDetailPage() {
   async function openPicker() {
     setPickRole("member");
     setPickUtilization(100);
+    setPickOnboarded(false);
     setPickerOpen(true);
     await loadPickerResources(resourceSearch);
   }
@@ -145,7 +186,13 @@ export function ProjectDetailPage() {
   async function addResource(resourceId: number) {
     if (!project) return;
     try {
-      await attachResourceToProject(project.id, resourceId, pickUtilization, pickRole);
+      await attachResourceToProject(
+        project.id,
+        resourceId,
+        pickUtilization,
+        pickRole,
+        pickOnboarded,
+      );
       setPickerOpen(false);
       notifyUtilizationChanged();
       await load();
@@ -166,6 +213,16 @@ export function ProjectDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update utilization");
+    }
+  }
+
+  async function saveOnboarded(resourceId: number, onboarded: boolean) {
+    if (!project) return;
+    try {
+      await updateProjectResourceOnboarded(project.id, resourceId, onboarded);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update onboarded flag");
     }
   }
 
@@ -194,8 +251,9 @@ export function ProjectDetailPage() {
     e.preventDefault();
     if (!project || !reportBody.trim()) return;
     try {
-      await createStatusReport(project.id, reportBody.trim());
+      await createStatusReport(project.id, reportBody.trim(), datetimeLocalToIso(reportAt));
       setReportBody("");
+      setReportAt(currentDatetimeLocalValue());
       if (reportPage === 0) await load();
       else setReportPage(0);
     } catch (err) {
@@ -238,6 +296,7 @@ export function ProjectDetailPage() {
             )}
           </p>
           <h1>{project.name}</h1>
+          <ProjectStatusBadge status={project.status} />
           <p className="project-card__updated">
             Last updated{" "}
             <time dateTime={project.updated_at}>
@@ -311,6 +370,22 @@ export function ProjectDetailPage() {
             <p className="muted">Group (inherited): {project.group_name ?? "—"}</p>
           )}
           <label>
+            Status
+            <select
+              required
+              value={editMeta.status}
+              onChange={(e) =>
+                setEditMeta({ ...editMeta, status: e.target.value as ProjectStatus })
+              }
+            >
+              {PROJECT_STATUSES.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
             Description
             <textarea
               rows={3}
@@ -333,6 +408,7 @@ export function ProjectDetailPage() {
                 <Link to={`/projects/${s.id}`}>
                   {projectListLabel(s.name, false, project.name)}
                 </Link>
+                <ProjectStatusBadge status={s.status} />
               </li>
             ))}
             {project.sub_projects.length === 0 && (
@@ -351,6 +427,19 @@ export function ProjectDetailPage() {
               value={subForm.description}
               onChange={(e) => setSubForm({ ...subForm, description: e.target.value })}
             />
+            <select
+              aria-label="Sub-project status"
+              value={subForm.status}
+              onChange={(e) =>
+                setSubForm({ ...subForm, status: e.target.value as ProjectStatus })
+              }
+            >
+              {PROJECT_STATUSES.map((status) => (
+                <option key={status.code} value={status.code}>
+                  {status.label}
+                </option>
+              ))}
+            </select>
             <button type="submit" className="btn btn--secondary">
               Add sub-project
             </button>
@@ -366,10 +455,24 @@ export function ProjectDetailPage() {
           </button>
         </div>
         <ul className="sub-list">
-          {project.resources.map((a) => (
+          {[...project.resources].sort(compareProjectResources).map((a) => (
             <li key={a.resource.id} className="resource-row">
-              <span>
-                {a.resource.name} · <RoleBadge role={a.resource.role} />
+              <span className="resource-row__identity">
+                <button
+                  type="button"
+                  className="onboarded-toggle"
+                  aria-pressed={a.onboarded}
+                  aria-label={
+                    a.onboarded
+                      ? `${a.resource.name} is onboarded`
+                      : `${a.resource.name} is not onboarded`
+                  }
+                  title={a.onboarded ? "Onboarded" : "Not onboarded"}
+                  onClick={() => void saveOnboarded(a.resource.id, !a.onboarded)}
+                >
+                  <OnboardedIcon active={a.onboarded} />
+                </button>
+                {a.resource.name}
               </span>
               <div className="resource-row__actions">
                 <label className="project-role-edit">
@@ -495,6 +598,15 @@ export function ProjectDetailPage() {
               placeholder="Multiline status update…"
             />
           </label>
+          <label>
+            Reported at
+            <input
+              type="datetime-local"
+              required
+              value={reportAt}
+              onChange={(e) => setReportAt(e.target.value)}
+            />
+          </label>
           <button type="submit" className="btn btn--primary">
             Add report
           </button>
@@ -554,6 +666,16 @@ export function ProjectDetailPage() {
                 ))}
               </select>
             </label>
+            <button
+              type="button"
+              className="onboarded-toggle picker-onboarded"
+              aria-pressed={pickOnboarded}
+              aria-label={pickOnboarded ? "Onboarded" : "Not onboarded"}
+              title={pickOnboarded ? "Onboarded" : "Not onboarded"}
+              onClick={() => setPickOnboarded((value) => !value)}
+            >
+              <OnboardedIcon active={pickOnboarded} />
+            </button>
             <label className="picker-utilization">
               Utilization on this project (%)
               <input

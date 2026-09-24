@@ -131,6 +131,7 @@ def test_resources_on_project(client, db_session):
     assert len(detail["resources"]) == 1
     assert detail["resources"][0]["utilization_percent"] == 80
     assert detail["resources"][0]["project_role"] == "member"
+    assert detail["resources"][0]["onboarded"] is False
 
     patch = client.patch(
         f"/api/projects/{root['id']}/resources/1",
@@ -147,6 +148,22 @@ def test_resources_on_project(client, db_session):
     assert role_only.status_code == 200
     assert role_only.json()["utilization_percent"] == 50
     assert role_only.json()["project_role"] == "firmware_engineer"
+    assert role_only.json()["onboarded"] is False
+
+    onboarded = client.patch(
+        f"/api/projects/{root['id']}/resources/1",
+        json={"onboarded": True},
+    )
+    assert onboarded.status_code == 200
+    assert onboarded.json()["onboarded"] is True
+    assert onboarded.json()["utilization_percent"] == 50
+
+    cleared = client.post(
+        f"/api/projects/{root['id']}/resources",
+        json={"resource_id": 1, "onboarded": False},
+    )
+    assert cleared.status_code == 200
+    assert client.get(f"/api/projects/{root['id']}").json()["resources"][0]["onboarded"] is False
 
     bad = client.patch(
         f"/api/projects/{root['id']}/resources/1",
@@ -194,6 +211,32 @@ def test_root_people_count_includes_sub_projects(client, db_session):
     listed = client.get("/api/projects", params={"roots_only": True}).json()
     match = next(item for item in listed["items"] if item["id"] == root["id"])
     assert match["resource_count"] == 2
+
+
+def test_project_status_defaults_and_updates(client):
+    created = create_root(client).json()
+    assert created["status"] == "assessment"
+    patched = client.patch(
+        f"/api/projects/{created['id']}",
+        json={"status": "closing"},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["status"] == "closing"
+    invalid = client.patch(
+        f"/api/projects/{created['id']}",
+        json={"status": "paused"},
+    )
+    assert invalid.status_code == 422
+
+
+def test_status_report_custom_created_at(client):
+    root = create_root(client).json()
+    created = client.post(
+        f"/api/projects/{root['id']}/status-reports",
+        json={"body": "Backdated", "created_at": "2026-01-15T08:30:00Z"},
+    )
+    assert created.status_code == 201
+    assert created.json()["created_at"].startswith("2026-01-15T08:30:00")
 
 
 def test_status_reports_limit(client):

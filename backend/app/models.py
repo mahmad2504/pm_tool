@@ -1,10 +1,10 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
-from app.roles import ResourceRole
+from app.roles import ProjectLifecycle, ResourceRole
 
 
 def utc_now() -> datetime:
@@ -63,6 +63,9 @@ class Project(Base):
     root_project_id: Mapped[int | None] = mapped_column(
         ForeignKey("projects.id", ondelete="CASCADE"), nullable=True, index=True
     )
+    status: Mapped[str] = mapped_column(
+        String(32), nullable=False, default=ProjectLifecycle.assessment.value
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )
@@ -104,6 +107,9 @@ class ProjectResource(Base):
     )
     utilization_percent: Mapped[int] = mapped_column(Integer, nullable=False, default=100)
     project_role: Mapped[str] = mapped_column(String(64), nullable=False, default="member")
+    onboarded: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
 
 class ProjectStatusReport(Base):

@@ -5,6 +5,8 @@ import {
   projectRoleLabel,
   ProjectSummary,
   StatusReport,
+  PROJECT_STATUSES,
+  ProjectStatus,
   createRootProject,
   createStatusReport,
   downloadProjectsExport,
@@ -18,7 +20,10 @@ import {
   updateStatusReport,
   uploadGroupIcon,
 } from "../api";
+import { OnboardedIcon } from "../components/OnboardedIcon";
+import { ProjectStatusBadge } from "../components/ProjectStatusBadge";
 import { AppShell } from "../layout/AppShell";
+import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
 
 function formatUpdated(value: string): string {
   return new Date(value).toLocaleString(undefined, {
@@ -76,6 +81,7 @@ export function ProjectsPage() {
       resourceName: string;
       roleLabel: string;
       utilization: number;
+      onboarded: boolean;
     }[]
   >([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -84,6 +90,7 @@ export function ProjectsPage() {
   const [latestReport, setLatestReport] = useState<StatusReport | null>(null);
   const [reportBody, setReportBody] = useState("");
   const [newReportBody, setNewReportBody] = useState("");
+  const [newReportAt, setNewReportAt] = useState(currentDatetimeLocalValue);
   const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportSaving, setReportSaving] = useState(false);
@@ -93,7 +100,9 @@ export function ProjectsPage() {
     name: "",
     description: "",
     group_name: "",
+    status: "assessment" as ProjectStatus,
   });
+  const [groupMode, setGroupMode] = useState<"existing" | "new">("new");
   const [groupEditor, setGroupEditor] = useState<GroupItem | null>(null);
   const [groupName, setGroupName] = useState("");
   const [iconFile, setIconFile] = useState<File | null>(null);
@@ -153,6 +162,7 @@ export function ProjectsPage() {
             resourceName: assignment.resource.name,
             roleLabel: projectRoleLabel(assignment.project_role),
             utilization: assignment.utilization_percent,
+            onboarded: assignment.onboarded,
           })),
         ),
       );
@@ -168,6 +178,7 @@ export function ProjectsPage() {
     setLatestReport(null);
     setReportBody("");
     setNewReportBody("");
+    setNewReportAt(currentDatetimeLocalValue());
     setReportError(null);
     setReportLoading(true);
     try {
@@ -212,8 +223,9 @@ export function ProjectsPage() {
     setReportSaving(true);
     setReportError(null);
     try {
-      await createStatusReport(reportTarget.id, body);
+      await createStatusReport(reportTarget.id, body, datetimeLocalToIso(newReportAt));
       setNewReportBody("");
+      setNewReportAt(currentDatetimeLocalValue());
       setReportTarget(null);
       await load();
     } catch (err) {
@@ -340,9 +352,11 @@ export function ProjectsPage() {
         name: form.name.trim(),
         description: form.description.trim() || null,
         group_name: form.group_name.trim(),
+        status: form.status,
       });
       setModalOpen(false);
-      setForm({ name: "", description: "", group_name: "" });
+      setForm({ name: "", description: "", group_name: "", status: "assessment" });
+      setGroupMode(groups.length > 0 ? "existing" : "new");
       await load();
       listGroups().then(setGroups).catch(() => {});
     } catch (err) {
@@ -350,6 +364,18 @@ export function ProjectsPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function openCreate() {
+    setForm({ name: "", description: "", group_name: "", status: "assessment" });
+    setGroupMode(groups.length > 0 ? "existing" : "new");
+    setModalOpen(true);
+    listGroups()
+      .then((items) => {
+        setGroups(items);
+        setGroupMode(items.length > 0 ? "existing" : "new");
+      })
+      .catch(() => setGroupMode("new"));
   }
 
   return (
@@ -361,7 +387,7 @@ export function ProjectsPage() {
             Every root project belongs to a group. Sub-projects inherit that group.
           </p>
         </div>
-        <button type="button" className="btn btn--primary" onClick={() => setModalOpen(true)}>
+        <button type="button" className="btn btn--primary" onClick={openCreate}>
           + New root project
         </button>
       </header>
@@ -422,7 +448,7 @@ export function ProjectsPage() {
           <div className="empty-state">
             <h2>No projects yet</h2>
             <p>Create a root project to get started.</p>
-            <button type="button" className="btn btn--primary" onClick={() => setModalOpen(true)}>
+            <button type="button" className="btn btn--primary" onClick={openCreate}>
               Create project
             </button>
           </div>
@@ -441,22 +467,39 @@ export function ProjectsPage() {
                   <h3 className="project-card__title">
                     <Link to={`/projects/${p.id}`}>{p.name}</Link>
                   </h3>
-                  {p.status_report_count > 0 && (
+                  <div className="project-card__head-actions">
+                    <ProjectStatusBadge status={p.status} />
                     <button
                       type="button"
-                      className="project-card__report"
-                      aria-label="Last report"
-                      onClick={() => void openLastReport(p)}
+                      className="project-card__people"
+                      aria-label={`${p.resource_count} people`}
+                      onClick={() => void openPeople(p)}
                     >
                       <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                        <path d="M14 2v6h6" />
-                        <path d="M16 13H8" />
-                        <path d="M16 17H8" />
-                        <path d="M10 9H8" />
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                        <circle cx="9" cy="7" r="4" />
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+                        <path d="M16 3.13a4 4 0 0 1 0 7.75" />
                       </svg>
+                      <span>{p.resource_count}</span>
                     </button>
-                  )}
+                    {p.status_report_count > 0 && (
+                      <button
+                        type="button"
+                        className="project-card__report"
+                        aria-label="Last report"
+                        onClick={() => void openLastReport(p)}
+                      >
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                          <path d="M14 2v6h6" />
+                          <path d="M16 13H8" />
+                          <path d="M16 17H8" />
+                          <path d="M10 9H8" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <p className="project-card__description">
                   {p.description || "No description"}
@@ -470,28 +513,14 @@ export function ProjectsPage() {
                     ))}
                   </ul>
                 )}
-                <p className="project-card__updated">
-                  Last updated <time dateTime={p.updated_at}>{formatUpdated(p.updated_at)}</time>
-                </p>
-                <p className="project-card__meta">
-                  <button
-                    type="button"
-                    className="project-card__people"
-                    aria-label={`${p.resource_count} people`}
-                    onClick={() => void openPeople(p)}
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                      <circle cx="9" cy="7" r="4" />
-                      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
-                    </svg>
-                    <span>{p.resource_count}</span>
-                  </button>
-                </p>
-                <Link className="btn btn--ghost btn--sm" to={`/projects/${p.id}`}>
-                  Open →
-                </Link>
+                <div className="project-card__footer">
+                  <Link className="btn btn--ghost btn--sm" to={`/projects/${p.id}`}>
+                    Open →
+                  </Link>
+                  <p className="project-card__updated">
+                    Last updated <time dateTime={p.updated_at}>{formatUpdated(p.updated_at)}</time>
+                  </p>
+                </div>
               </li>
             ))}
           </ul>
@@ -648,6 +677,7 @@ export function ProjectsPage() {
                   <li key={row.key}>
                     {row.projectName} -&gt; {row.resourceName} -&gt; {row.roleLabel} -&gt;{" "}
                     {row.utilization}%
+                    {row.onboarded ? <OnboardedIcon /> : null}
                   </li>
                 ))}
               </ul>
@@ -710,6 +740,15 @@ export function ProjectsPage() {
                     placeholder="Write a new status report…"
                   />
                 </label>
+                <label>
+                  Reported at
+                  <input
+                    type="datetime-local"
+                    required
+                    value={newReportAt}
+                    onChange={(event) => setNewReportAt(event.target.value)}
+                  />
+                </label>
                 <footer className="modal__footer">
                   <button type="button" className="btn btn--ghost" onClick={() => setReportTarget(null)}>
                     Cancel
@@ -729,13 +768,10 @@ export function ProjectsPage() {
       )}
 
       {modalOpen && (
-        <div className="modal-backdrop" onClick={() => setModalOpen(false)} role="presentation">
-          <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog">
+        <div className="modal-backdrop" role="presentation">
+          <div className="modal" role="dialog" aria-modal="true" aria-labelledby="new-project-title">
             <header className="modal__header">
-              <h2>New root project</h2>
-              <button type="button" className="icon-btn" onClick={() => setModalOpen(false)}>
-                ×
-              </button>
+              <h2 id="new-project-title">New root project</h2>
             </header>
             <form className="modal__form" onSubmit={(e) => void handleCreate(e)}>
               <label>
@@ -746,13 +782,72 @@ export function ProjectsPage() {
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
+              <fieldset className="group-choice">
+                <legend>Group</legend>
+                <div className="group-choice__modes">
+                  <label className="group-choice__option">
+                    <input
+                      type="radio"
+                      name="group-mode"
+                      checked={groupMode === "existing"}
+                      disabled={groups.length === 0}
+                      onChange={() => {
+                        setGroupMode("existing");
+                        setForm({ ...form, group_name: "" });
+                      }}
+                    />
+                    Existing group
+                  </label>
+                  <label className="group-choice__option">
+                    <input
+                      type="radio"
+                      name="group-mode"
+                      checked={groupMode === "new"}
+                      onChange={() => {
+                        setGroupMode("new");
+                        setForm({ ...form, group_name: "" });
+                      }}
+                    />
+                    New group
+                  </label>
+                </div>
+                {groupMode === "existing" ? (
+                  <select
+                    required
+                    value={form.group_name}
+                    onChange={(e) => setForm({ ...form, group_name: e.target.value })}
+                  >
+                    <option value="">Select a group</option>
+                    {groups.map((group) => (
+                      <option key={group.id} value={group.name}>
+                        {group.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    required
+                    placeholder="Group name"
+                    value={form.group_name}
+                    onChange={(e) => setForm({ ...form, group_name: e.target.value })}
+                  />
+                )}
+              </fieldset>
               <label>
-                Group
-                <input
+                Status
+                <select
                   required
-                  value={form.group_name}
-                  onChange={(e) => setForm({ ...form, group_name: e.target.value })}
-                />
+                  value={form.status}
+                  onChange={(e) =>
+                    setForm({ ...form, status: e.target.value as ProjectStatus })
+                  }
+                >
+                  {PROJECT_STATUSES.map((status) => (
+                    <option key={status.code} value={status.code}>
+                      {status.label}
+                    </option>
+                  ))}
+                </select>
               </label>
               <label>
                 Description

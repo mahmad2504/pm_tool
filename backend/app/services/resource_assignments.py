@@ -22,6 +22,7 @@ def assignments_by_resource_ids(
             Group.name,
             ProjectResource.utilization_percent,
             ProjectResource.project_role,
+            ProjectResource.onboarded,
         )
         .join(Project, ProjectResource.project_id == Project.id)
         .join(Root, Project.root_project_id == Root.id)
@@ -40,6 +41,7 @@ def assignments_by_resource_ids(
         group_name,
         utilization,
         project_role,
+        onboarded,
     ) in rows:
         result[resource_id].append(
             ResourceProjectAssignment(
@@ -49,6 +51,7 @@ def assignments_by_resource_ids(
                 group_name=group_name,
                 utilization_percent=utilization,
                 project_role=project_role,
+                onboarded=bool(onboarded),
             )
         )
     return result
