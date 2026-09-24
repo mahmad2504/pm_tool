@@ -903,6 +903,11 @@ a {
   color: var(--success);
 }
 
+.project-card__people-pop-duplicate {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .project-card__sub-count svg {
   width: 0.7rem;
   height: 0.7rem;
@@ -1004,9 +1009,18 @@ a {
   stroke-linejoin: round;
 }
 
-.project-card__people:hover,
+.project-card__people,
+.project-card__people:hover {
+  color: var(--success);
+}
+
 .project-card__report:hover {
   color: var(--accent-hover);
+}
+
+.project-card__people--duplicate,
+.project-card__people--duplicate:hover {
+  color: var(--accent);
 }
 
 .report-dialog__new {
@@ -1031,6 +1045,11 @@ a {
 
 .people-dialog__list li:last-child {
   border-bottom: none;
+}
+
+.people-dialog__duplicate {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 .list-footer {

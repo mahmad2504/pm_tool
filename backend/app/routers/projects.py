@@ -9,6 +9,7 @@ from app.models import Group, Project, ProjectResource, ProjectStatusReport, Res
 from app.roles import ProjectLifecycle
 from app.schemas.projects import (
     AssignedResourceRead,
+    DuplicateResource,
     ProjectCreateRoot,
     ProjectCreateSub,
     ProjectDetail,
@@ -62,7 +63,7 @@ def _resource_count(db: Session, project_ids: list[int]) -> int:
         return 0
     return (
         db.scalar(
-            select(func.count())
+            select(func.count(func.distinct(ProjectResource.resource_id)))
             .select_from(ProjectResource)
             .where(ProjectResource.project_id.in_(project_ids))
         )
@@ -103,11 +104,52 @@ def _load_children(db: Session, project_id: int) -> list[Project]:
     return list(db.scalars(select(Project).where(Project.parent_id == project_id)).all())
 
 
+def _duplicate_resources(
+    db: Session, children_by_parent: dict[int, list[Project]]
+) -> dict[int, list[DuplicateResource]]:
+    """Resources assigned to more than one project in a root and its sub-projects."""
+    result = {parent_id: [] for parent_id in children_by_parent}
+    project_ids = [
+        project_id
+        for parent_id, children in children_by_parent.items()
+        for project_id in (parent_id, *(child.id for child in children))
+    ]
+    if not project_ids:
+        return result
+    rows = db.execute(
+        select(ProjectResource.project_id, ProjectResource.resource_id, Resource.name)
+        .join(Resource, Resource.id == ProjectResource.resource_id)
+        .where(ProjectResource.project_id.in_(project_ids))
+    ).all()
+    by_project: dict[int, dict[int, str]] = {}
+    for project_id, resource_id, name in rows:
+        by_project.setdefault(project_id, {})[resource_id] = name
+    for parent_id, children in children_by_parent.items():
+        occurrences: dict[int, str] = {}
+        counts: dict[int, int] = {}
+        for project_id in (parent_id, *(child.id for child in children)):
+            for resource_id, name in by_project.get(project_id, {}).items():
+                occurrences[resource_id] = name
+                counts[resource_id] = counts.get(resource_id, 0) + 1
+        result[parent_id] = [
+            DuplicateResource(id=resource_id, name=occurrences[resource_id])
+            for resource_id, count in counts.items()
+            if count > 1
+        ]
+        result[parent_id].sort(key=lambda item: item.name.lower())
+    return result
+
+
 def _to_summary(
-    db: Session, project: Project, children: list[Project] | None = None
+    db: Session,
+    project: Project,
+    children: list[Project] | None = None,
+    duplicate_resources: list[DuplicateResource] | None = None,
 ) -> ProjectSummary:
     if children is None:
         children = _load_children(db, project.id)
+    if duplicate_resources is None:
+        duplicate_resources = _duplicate_resources(db, {project.id: children})[project.id]
     rc = _resource_count(db, [project.id, *[child.id for child in children]])
     src = _status_report_count(db, project.id)
     parent_name = None
@@ -131,6 +173,7 @@ def _to_summary(
         status_report_count=src,
         sub_project_count=len(children),
         sub_projects=_sub_project_summaries(db, children),
+        duplicate_resources=duplicate_resources,
         created_at=project.created_at,
         updated_at=last_activity_at(db, project, children),
     )
@@ -243,8 +286,17 @@ def list_projects(
         for child in db.scalars(select(Project).where(Project.parent_id.in_(ids))).all():
             if child.parent_id is not None:
                 children_by_parent.setdefault(child.parent_id, []).append(child)
+    duplicates = _duplicate_resources(db, children_by_parent)
     return ProjectListResponse(
-        items=[_to_summary(db, p, children_by_parent.get(p.id, [])) for p in items],
+        items=[
+            _to_summary(
+                db,
+                p,
+                children_by_parent.get(p.id, []),
+                duplicates.get(p.id, []),
+            )
+            for p in items
+        ],
         total=total,
     )
 

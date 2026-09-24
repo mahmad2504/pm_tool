@@ -208,6 +208,11 @@ export interface SubProjectSummary {
   resource_count: number;
 }
 
+export interface DuplicateResource {
+  id: number;
+  name: string;
+}
+
 export interface ProjectSummary {
   id: number;
   name: string;
@@ -224,6 +229,7 @@ export interface ProjectSummary {
   status_report_count: number;
   sub_project_count: number;
   sub_projects: SubProjectSummary[];
+  duplicate_resources: DuplicateResource[];
   created_at: string;
   updated_at: string;
 }

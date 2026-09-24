@@ -1,8 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { getProject } from "../api";
+import { DuplicateResource, getProject } from "../api";
 
 type Person = {
   key: string;
+  resourceId: number;
   name: string;
   onMain: boolean;
 };
@@ -10,12 +11,14 @@ type Person = {
 export function PeopleNameHover({
   projectIds,
   mainProjectId,
+  duplicateResources = [],
   className,
   align = "start",
   children,
 }: {
   projectIds: number[];
   mainProjectId?: number;
+  duplicateResources?: DuplicateResource[];
   className?: string;
   align?: "start" | "end";
   children: ReactNode;
@@ -30,11 +33,15 @@ export function PeopleNameHover({
     try {
       const details = await Promise.all(projectIds.map((id) => getProject(id)));
       const rows: Person[] = [];
+      const seen = new Set<number>();
       for (const detail of details) {
         const onMain = mainProjectId != null && detail.id === mainProjectId;
         for (const assignment of detail.resources) {
+          if (seen.has(assignment.resource.id)) continue;
+          seen.add(assignment.resource.id);
           rows.push({
-            key: `${detail.id}-${assignment.resource.id}`,
+            key: String(assignment.resource.id),
+            resourceId: assignment.resource.id,
             name: assignment.resource.name,
             onMain,
           });
@@ -67,14 +74,23 @@ export function PeopleNameHover({
           {!error && people && people.length === 0 && <span>No people assigned.</span>}
           {!error && people && people.length > 0 && (
             <ul>
-              {people.map((person) => (
-                <li
-                  key={person.key}
-                  className={person.onMain ? "project-card__people-pop-main" : undefined}
-                >
-                  {`. ${person.name}`}
-                </li>
-              ))}
+              {people.map((person) => {
+                const duplicate = duplicateResources.some((item) => item.id === person.resourceId);
+                return (
+                  <li
+                    key={person.key}
+                    className={
+                      duplicate
+                        ? "project-card__people-pop-duplicate"
+                        : person.onMain
+                          ? "project-card__people-pop-main"
+                          : undefined
+                    }
+                  >
+                    {`. ${person.name}`}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </span>

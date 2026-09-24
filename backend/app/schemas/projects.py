@@ -127,6 +127,11 @@ class SubProjectSummary(BaseModel):
     resource_count: int = 0
 
 
+class DuplicateResource(BaseModel):
+    id: int
+    name: str
+
+
 class ProjectSummary(BaseModel):
     id: int
     name: str
@@ -143,6 +148,7 @@ class ProjectSummary(BaseModel):
     status_report_count: int
     sub_project_count: int
     sub_projects: list[SubProjectSummary] = []
+    duplicate_resources: list[DuplicateResource] = []
     created_at: datetime
     updated_at: datetime
 

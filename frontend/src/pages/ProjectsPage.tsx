@@ -80,10 +80,12 @@ export function ProjectsPage() {
     {
       key: string;
       projectName: string;
+      resourceId: number;
       resourceName: string;
       roleLabel: string;
       utilization: number;
       onboarded: boolean;
+      duplicate: boolean;
     }[]
   >([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
@@ -167,15 +169,23 @@ export function ProjectsPage() {
         getProject(project.id),
         ...project.sub_projects.map((sub) => getProject(sub.id)),
       ]);
+      const counts = new Map<number, number>();
+      for (const detail of details) {
+        for (const assignment of detail.resources) {
+          counts.set(assignment.resource.id, (counts.get(assignment.resource.id) ?? 0) + 1);
+        }
+      }
       setPeopleRows(
         details.flatMap((detail) =>
           detail.resources.map((assignment) => ({
             key: `${detail.id}-${assignment.resource.id}`,
+            resourceId: assignment.resource.id,
             projectName: detail.name,
             resourceName: assignment.resource.name,
             roleLabel: projectRoleLabel(assignment.project_role),
             utilization: assignment.utilization_percent,
             onboarded: assignment.onboarded,
+            duplicate: (counts.get(assignment.resource.id) ?? 0) > 1,
           })),
         ),
       );
@@ -467,7 +477,9 @@ export function ProjectsPage() {
           </div>
         ) : (
           <ul className="resource-grid">
-            {projects.map((p) => (
+            {projects.map((p) => {
+              const duplicates = p.duplicate_resources ?? [];
+              return (
               <li key={p.id} className="resource-card project-card">
                 <div className="project-card__head">
                   {p.group_name && p.group_id != null && (
@@ -489,12 +501,17 @@ export function ProjectsPage() {
                     <PeopleNameHover
                       projectIds={[p.id, ...p.sub_projects.map((sub) => sub.id)]}
                       mainProjectId={p.id}
+                      duplicateResources={duplicates}
                       className="project-card__people-hover"
                       align="end"
                     >
                       <button
                         type="button"
-                        className="project-card__people"
+                        className={
+                          duplicates.length
+                            ? "project-card__people project-card__people--duplicate"
+                            : "project-card__people"
+                        }
                         aria-label={`${p.resource_count} people`}
                         onClick={() => void openPeople(p)}
                       >
@@ -554,7 +571,8 @@ export function ProjectsPage() {
                   </p>
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
         <p className="muted list-footer">{total} root project(s)</p>
@@ -707,8 +725,11 @@ export function ProjectsPage() {
               <ul className="people-dialog__list">
                 {peopleRows.map((row) => (
                   <li key={row.key}>
-                    {row.projectName} -&gt; {row.resourceName} -&gt; {row.roleLabel} -&gt;{" "}
-                    {row.utilization}%
+                    {row.projectName} -&gt;{" "}
+                    <span className={row.duplicate ? "people-dialog__duplicate" : undefined}>
+                      {row.resourceName}
+                    </span>{" "}
+                    -&gt; {row.roleLabel} -&gt; {row.utilization}%
                     {row.onboarded ? <OnboardedIcon /> : null}
                   </li>
                 ))}

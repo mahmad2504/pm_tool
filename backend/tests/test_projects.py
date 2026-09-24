@@ -217,6 +217,82 @@ def test_root_people_count_includes_sub_projects(client, db_session):
     assert detail["sub_projects"][0]["resource_count"] == 1
 
 
+def test_duplicate_resources_across_project_and_subprojects(client, db_session):
+    root = create_root(client).json()
+    design = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Design"},
+    ).json()
+    qa = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "QA"},
+    ).json()
+    db_session.add_all(
+        [
+            Resource(name="Ada", role="software_engineer", email="ada@example.com"),
+            Resource(name="Bea", role="lead", email="bea@example.com"),
+        ]
+    )
+    db_session.commit()
+    assert (
+        client.post(
+            f"/api/projects/{root['id']}/resources",
+            json={"resource_id": 1, "utilization_percent": 40},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{design['id']}/resources",
+            json={"resource_id": 1, "utilization_percent": 20},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{qa['id']}/resources",
+            json={"resource_id": 2, "utilization_percent": 30},
+        ).status_code
+        == 201
+    )
+
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    match = next(item for item in listed["items"] if item["id"] == root["id"])
+    assert match["duplicate_resources"] == [{"id": 1, "name": "Ada"}]
+    assert match["resource_count"] == 2
+
+    shared_only_on_subs = client.post("/api/projects", json={
+        "name": "Beta",
+        "group_name": "Platform",
+    }).json()
+    left = client.post(
+        f"/api/projects/{shared_only_on_subs['id']}/sub-projects",
+        json={"name": "Left"},
+    ).json()
+    right = client.post(
+        f"/api/projects/{shared_only_on_subs['id']}/sub-projects",
+        json={"name": "Right"},
+    ).json()
+    assert (
+        client.post(
+            f"/api/projects/{left['id']}/resources",
+            json={"resource_id": 2},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{right['id']}/resources",
+            json={"resource_id": 2},
+        ).status_code
+        == 201
+    )
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    beta = next(item for item in listed["items"] if item["id"] == shared_only_on_subs["id"])
+    assert beta["duplicate_resources"] == [{"id": 2, "name": "Bea"}]
+    assert beta["resource_count"] == 1
+
+
 def test_project_status_defaults_and_updates(client):
     created = create_root(client).json()
     assert created["status"] == "assessment"
