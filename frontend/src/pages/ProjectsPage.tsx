@@ -508,7 +508,18 @@ export function ProjectsPage() {
                   <ul className="project-card__subs">
                     {p.sub_projects.map((sub) => (
                       <li key={sub.id}>
-                        <Link to={`/projects/${sub.id}`}>{sub.name}</Link>
+                        <Link to={`/projects/${sub.id}`}>
+                          {sub.name}
+                          {sub.resource_count > 0 && (
+                            <span className="project-card__sub-count">
+                              <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                                <circle cx="12" cy="7" r="4" />
+                              </svg>
+                              {sub.resource_count}
+                            </span>
+                          )}
+                        </Link>
                       </li>
                     ))}
                   </ul>

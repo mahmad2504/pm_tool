@@ -810,6 +810,30 @@ a {
   color: var(--accent);
 }
 
+.project-card__sub-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  margin-left: 0.35rem;
+  font-size: 0.62rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.project-card__sub-count svg {
+  width: 0.7rem;
+  height: 0.7rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.project-card__subs a:hover .project-card__sub-count {
+  color: var(--text-muted);
+}
+
 .project-card__description {
   margin: 0;
   font-size: 0.88rem;
