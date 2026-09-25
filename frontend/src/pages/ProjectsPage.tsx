@@ -85,9 +85,17 @@ function uniquePeople(
   return people.filter((person) => !sharedIds.has(person.id));
 }
 
-function bulletList(items: string[], className: string): string {
+function sharedProjectLink(
+  items: string[],
+  key: string,
+  label: string,
+  shareProjects: Record<string, string[]>,
+): string {
   if (items.length === 0) return "";
-  return `<ul class="${className}">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+  shareProjects[key] = items;
+  const text = items.length === 1 ? "1 project" : `${items.length} projects`;
+  const hidden = items.map((item) => `<li>${escapeHtml(item)}</li>`).join("");
+  return `<button type="button" class="count-btn share-projects-btn" data-kind="share-projects" data-key="${escapeHtml(key)}" data-label="${escapeHtml(label)}">${text}</button><ul class="share-projects-print">${hidden}</ul>`;
 }
 
 function elsewhereLabels(people: ReportSharedResource[], homeIds: Set<number>): string[] {
@@ -110,10 +118,16 @@ function resourceCell(
   resourceKey: string,
   label: string,
   homeIds: Set<number>,
+  shareProjects: Record<string, string[]>,
 ): string {
   const total = countCell(people.length, "resources", resourceKey, label);
   if (sharedPeople.length === 0) return total;
-  const projects = bulletList(elsewhereLabels(sharedPeople, homeIds), "share-projects");
+  const projects = sharedProjectLink(
+    elsewhereLabels(sharedPeople, homeIds),
+    resourceKey,
+    label,
+    shareProjects,
+  );
   const shared = countCell(sharedPeople.length, "shared", resourceKey, label);
   const uniqueCount = uniquePeople(people, sharedPeople).length;
   if (uniqueCount <= 0) return `<div>${shared} shared</div>${projects}`;
@@ -139,11 +153,20 @@ function outsideProjectLabels(people: ReportSharedResource[], groupName: string)
   return [...labels];
 }
 
-function groupResourceNote(group: ReportGroup, key: string): string {
+function groupResourceNote(
+  group: ReportGroup,
+  key: string,
+  shareProjects: Record<string, string[]>,
+): string {
   const shared = group.shared_with_other_groups;
   if (group.resources.length === 0) return "None assigned";
   if (shared.length === 0) return "No sharing across groups";
-  const projects = bulletList(outsideProjectLabels(shared, group.name), "share-projects");
+  const projects = sharedProjectLink(
+    outsideProjectLabels(shared, group.name),
+    `${key}-other`,
+    group.name,
+    shareProjects,
+  );
   const sharedCount = countCell(shared.length, "group-shared", `${key}-other`, group.name);
   const uniqueCount = uniquePeople(group.resources, shared).length;
   if (uniqueCount <= 0) return `<div>${sharedCount} shared</div>${projects}`;
@@ -156,6 +179,7 @@ function projectTableRows(
   resources: Record<string, ReportSharedResource[]>,
   shared: Record<string, ReportSharedResource[]>,
   unique: Record<string, ReportSharedResource[]>,
+  shareProjects: Record<string, string[]>,
 ): string {
   return projects
     .map((project) => {
@@ -167,7 +191,7 @@ function projectTableRows(
       const root = `<tr>
         <td>${escapeHtml(project.name)}</td>
         <td>${textBlock(project.description)}</td>
-        <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds)}</td>
+        <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds, shareProjects)}</td>
         <td class="state">${stateCell(project.status)}</td>
         <td class="st">${textBlock(project.latest_status)}</td>
       </tr>`;
@@ -181,7 +205,7 @@ function projectTableRows(
           return `<tr class="sub">
         <td class="sub-name">${escapeHtml(sub.name)}</td>
         <td>${textBlock(sub.description)}</td>
-        <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]))}</td>
+        <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]), shareProjects)}</td>
         <td class="state">${stateCell(sub.status)}</td>
         <td class="st">${textBlock(sub.latest_status)}</td>
       </tr>`;
@@ -197,6 +221,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const resources: Record<string, ReportSharedResource[]> = {};
   const shared: Record<string, ReportSharedResource[]> = {};
   const unique: Record<string, ReportSharedResource[]> = {};
+  const shareProjects: Record<string, string[]> = {};
   const projectTotal = groups.reduce((sum, group) => sum + group.project_count, 0);
   const uniqueResources = new Set(groups.flatMap((group) => group.resources.map((person) => person.id)));
   const summaryRows = groups
@@ -210,7 +235,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
             <td><span class="tag ${tone}">${escapeHtml(group.name)}</span></td>
             <td class="num">${group.project_count}</td>
             <td class="num">${countCell(group.resources.length, "resources", key, group.name)}</td>
-            <td>${groupResourceNote(group, key)}</td>
+            <td>${groupResourceNote(group, key, shareProjects)}</td>
           </tr>`;
     })
     .join("");
@@ -239,7 +264,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const sections = groups
     .map((group, index) => {
       const tone = toneForGroup(group.name, index);
-      const rows = projectTableRows(group.projects, resources, shared, unique);
+      const rows = projectTableRows(group.projects, resources, shared, unique, shareProjects);
       return `<h2 class="${tone}">Project family — ${escapeHtml(group.name)}</h2>
       <table class="family ${tone}">
         <thead>
@@ -255,7 +280,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       </table>`;
     })
     .join("");
-  const listJson = JSON.stringify({ resources, shared, unique }).replace(/</g, "\\u003c");
+  const listJson = JSON.stringify({ resources, shared, unique, shareProjects }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -407,11 +432,20 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
     td.state { width: 1%; white-space: nowrap; }
     td.st { width: 28%; }
     .res-line { font-weight: 600; }
-    ul.share-list, ul.share-projects {
+    ul.share-list {
       margin: 4px 0 0;
       padding-left: 1.15em;
     }
-    ul.share-projects { margin-top: 2px; }
+    button.share-projects-btn {
+      display: block;
+      margin-top: 2px;
+      font-size: 12px;
+      font-weight: 600;
+      text-align: left;
+    }
+    ul.share-projects-print, ul.share-dialog-list { margin: 2px 0 0; padding-left: 1.15em; }
+    ul.share-projects-print { display: none; }
+    ul.share-dialog-list { margin: 0; padding: 16px 20px 20px 36px; }
     tbody tr:nth-child(even) { background: var(--wash); }
     tbody tr.total { background: #dbeafe; font-weight: 600; }
     tbody tr.total td { border-bottom: 0; }
@@ -508,7 +542,8 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       }
       h2 { break-after: avoid; }
       table { break-inside: avoid; }
-      button.print, .shared-backdrop { display: none; }
+      button.print, .shared-backdrop, button.share-projects-btn { display: none; }
+      ul.share-projects-print { display: block; }
     }
   </style>
 </head>
@@ -525,7 +560,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names, projects, and utilization.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects.</p>
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
@@ -550,6 +585,21 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       return assignment.group_name ? assignment.group_name + " · " + name : name;
     }
     function openList(kind, key, label) {
+      if (kind === "share-projects") {
+        const names = (listData.shareProjects && listData.shareProjects[key]) || [];
+        title.textContent = "Shared projects — " + label;
+        body.replaceChildren();
+        const list = document.createElement("ul");
+        list.className = "share-dialog-list";
+        for (const name of names) {
+          const item = document.createElement("li");
+          item.textContent = name;
+          list.append(item);
+        }
+        body.append(list);
+        dialog.hidden = false;
+        return;
+      }
       const buckets = {
         resources: listData.resources,
         unique: listData.unique,
