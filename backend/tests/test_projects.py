@@ -582,5 +582,22 @@ def test_project_report_includes_description_and_latest_status(client):
     project = groups[0]["projects"][0]
     assert project["description"] == "Sensor bridge"
     assert project["latest_status"] == "Goal achieved — cleanup in progress."
+    assert project["latest_status_at"]
     assert project["sub_projects"][0]["description"] == "Unassigned software"
     assert project["sub_projects"][0]["latest_status"] == "Software resource still unassigned."
+    assert project["sub_projects"][0]["latest_status_at"]
+
+
+def test_project_report_includes_latest_status_time(client):
+    root = create_root(client, name="Stale status", group_name="Platform").json()
+    created = client.post(
+        f"/api/projects/{root['id']}/status-reports",
+        json={"body": "Old update", "created_at": "2026-01-01T12:00:00Z"},
+    )
+    assert created.status_code == 201
+
+    report = client.get("/api/projects/report")
+    assert report.status_code == 200
+    project = report.json()["groups"][0]["projects"][0]
+    assert project["latest_status"] == "Old update"
+    assert project["latest_status_at"].startswith("2026-01-01T12:00:00")

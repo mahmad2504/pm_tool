@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -215,13 +216,16 @@ def _to_summary(
     )
 
 
-def _latest_status_bodies(db: Session, project_ids: list[int]) -> dict[int, str]:
+def _latest_status_reports(
+    db: Session, project_ids: list[int]
+) -> dict[int, tuple[str, datetime]]:
     if not project_ids:
         return {}
     ranked = (
         select(
             ProjectStatusReport.project_id,
             ProjectStatusReport.body,
+            ProjectStatusReport.created_at,
             func.row_number()
             .over(
                 partition_by=ProjectStatusReport.project_id,
@@ -236,9 +240,14 @@ def _latest_status_bodies(db: Session, project_ids: list[int]) -> dict[int, str]
         .subquery()
     )
     rows = db.execute(
-        select(ranked.c.project_id, ranked.c.body).where(ranked.c.status_rank == 1)
+        select(ranked.c.project_id, ranked.c.body, ranked.c.created_at).where(
+            ranked.c.status_rank == 1
+        )
     ).all()
-    return {int(project_id): body for project_id, body in rows}
+    return {
+        int(project_id): (body, created_at)
+        for project_id, body, created_at in rows
+    }
 
 
 def _recent_reports(db: Session, project_id: int, limit: int) -> list[ProjectStatusReport]:
@@ -489,7 +498,7 @@ def project_report(
                 people[resource_id] = (name, assignments)
                 if project_id in members:
                     members[project_id].add(resource_id)
-    latest_status = _latest_status_bodies(db, all_ids)
+    latest_status = _latest_status_reports(db, all_ids)
     items: list[tuple[tuple[int | None, str], set[int], ReportProject]] = []
     for root in roots:
         children = sorted(
@@ -510,7 +519,8 @@ def project_report(
                 description=root.description,
                 group_name=group.name if group else None,
                 status=ProjectLifecycle(root.status),
-                latest_status=latest_status.get(root.id),
+                latest_status=latest_status[root.id][0] if root.id in latest_status else None,
+                latest_status_at=latest_status[root.id][1] if root.id in latest_status else None,
                 resource_count=len(member_ids),
                 resources=_listed_people(member_ids, home_ids, people),
                 shared_resources=_listed_people(
@@ -522,7 +532,8 @@ def project_report(
                         name=child.name,
                         description=child.description,
                         status=ProjectLifecycle(child.status),
-                        latest_status=latest_status.get(child.id),
+                        latest_status=latest_status[child.id][0] if child.id in latest_status else None,
+                        latest_status_at=latest_status[child.id][1] if child.id in latest_status else None,
                         resource_count=len(members.get(child.id, set())),
                         resources=_listed_people(
                             members.get(child.id, set()), {child.id}, people

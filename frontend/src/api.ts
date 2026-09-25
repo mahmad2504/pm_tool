@@ -363,6 +363,7 @@ export interface ReportSubProject {
   description: string | null;
   status: ProjectStatus;
   latest_status: string | null;
+  latest_status_at: string | null;
   resource_count: number;
   resources: ReportSharedResource[];
   shared_resources: ReportSharedResource[];
@@ -385,6 +386,7 @@ export interface ReportProject {
   group_name: string | null;
   status: ProjectStatus;
   latest_status: string | null;
+  latest_status_at: string | null;
   resource_count: number;
   resources: ReportSharedResource[];
   shared_resources: ReportSharedResource[];

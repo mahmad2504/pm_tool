@@ -183,6 +183,7 @@ class ReportSubProject(BaseModel):
     description: str | None
     status: ProjectLifecycle
     latest_status: str | None
+    latest_status_at: datetime | None
     resource_count: int
     resources: list[ReportSharedResource]
     shared_resources: list[ReportSharedResource]
@@ -195,6 +196,7 @@ class ReportProject(BaseModel):
     group_name: str | None
     status: ProjectLifecycle
     latest_status: str | None
+    latest_status_at: datetime | None
     resource_count: int
     resources: list[ReportSharedResource]
     shared_resources: list[ReportSharedResource]

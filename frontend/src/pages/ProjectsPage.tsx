@@ -139,6 +139,23 @@ function stateCell(status: ProjectStatus): string {
   return escapeHtml(projectStatusLabel(status));
 }
 
+const STATUS_REPORT_STALE_MS = 7 * 24 * 60 * 60 * 1000;
+
+function statusReportIsStale(reportedAt: string | null | undefined): boolean {
+  if (!reportedAt) return false;
+  const reported = new Date(reportedAt).getTime();
+  if (Number.isNaN(reported)) return false;
+  return Date.now() - reported > STATUS_REPORT_STALE_MS;
+}
+
+function statusCell(body: string | null | undefined, reportedAt: string | null | undefined): string {
+  const text = textBlock(body);
+  if (!statusReportIsStale(reportedAt)) return text;
+  const title = `Last status report is more than a week old (${formatUpdated(reportedAt as string)})`;
+  const label = escapeHtml(title);
+  return `<span class="status-stale" title="${label}"><svg viewBox="0 0 24 24" aria-label="${label}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>${text}`;
+}
+
 function outsideProjectLabels(people: ReportSharedResource[], groupName: string): string[] {
   const labels = new Set<string>();
   for (const person of people) {
@@ -193,7 +210,7 @@ function projectTableRows(
         <td>${textBlock(project.description)}</td>
         <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds, shareProjects)}</td>
         <td class="state">${stateCell(project.status)}</td>
-        <td class="st">${textBlock(project.latest_status)}</td>
+        <td class="st">${statusCell(project.latest_status, project.latest_status_at)}</td>
       </tr>`;
       const subs = project.sub_projects
         .map((sub) => {
@@ -207,7 +224,7 @@ function projectTableRows(
         <td>${textBlock(sub.description)}</td>
         <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]), shareProjects)}</td>
         <td class="state">${stateCell(sub.status)}</td>
-        <td class="st">${textBlock(sub.latest_status)}</td>
+        <td class="st">${statusCell(sub.latest_status, sub.latest_status_at)}</td>
       </tr>`;
         })
         .join("");
@@ -431,6 +448,15 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
     td.res { width: 24%; }
     td.state { width: 1%; white-space: nowrap; }
     td.st { width: 28%; }
+    .status-stale {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      margin: 0 6px 0 0;
+      vertical-align: -2px;
+      color: #b42318;
+    }
+    .status-stale svg { display: block; width: 16px; height: 16px; }
     .res-line { font-weight: 600; }
     ul.share-list {
       margin: 4px 0 0;
@@ -536,7 +562,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
     @media print {
       body { background: #fff; }
       .page { margin: 0; border: 0; }
-      .page > header, th, .kpi, .tag, tbody tr {
+      .page > header, th, .kpi, .tag, tbody tr, .status-stale {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }
@@ -560,7 +586,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. A red mark in Status means the last status report is more than a week old.</p>
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
