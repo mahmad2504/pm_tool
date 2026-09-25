@@ -52,7 +52,7 @@ function escapeHtml(value: string): string {
 
 function countCell(
   count: number,
-  kind: "resources" | "shared" | "group-shared",
+  kind: "resources" | "unique" | "shared" | "group-shared",
   key: string,
   label: string,
 ): string {
@@ -77,9 +77,17 @@ function toneForGroup(name: string, index: number): (typeof groupTones)[number] 
   return groupTones[index % groupTones.length];
 }
 
-function listPhrase(items: string[], limit = 3): string {
-  if (items.length <= limit) return items.join(", ");
-  return `${items.slice(0, limit).join(", ")} and ${items.length - limit} more`;
+function uniquePeople(
+  people: ReportSharedResource[],
+  sharedPeople: ReportSharedResource[],
+): ReportSharedResource[] {
+  const sharedIds = new Set(sharedPeople.map((person) => person.id));
+  return people.filter((person) => !sharedIds.has(person.id));
+}
+
+function bulletList(items: string[], className: string): string {
+  if (items.length === 0) return "";
+  return `<ul class="${className}">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
 function elsewhereLabels(people: ReportSharedResource[], homeIds: Set<number>): string[] {
@@ -97,58 +105,69 @@ function elsewhereLabels(people: ReportSharedResource[], homeIds: Set<number>): 
 }
 
 function resourceCell(
-  count: number,
+  people: ReportSharedResource[],
   sharedPeople: ReportSharedResource[],
   resourceKey: string,
-  sharedKey: string,
   label: string,
   homeIds: Set<number>,
 ): string {
-  const total = countCell(count, "resources", resourceKey, label);
+  const total = countCell(people.length, "resources", resourceKey, label);
   if (sharedPeople.length === 0) return total;
-  const others = elsewhereLabels(sharedPeople, homeIds);
-  const shared = countCell(sharedPeople.length, "shared", sharedKey, label);
-  const withClause = others.length ? ` with ${escapeHtml(listPhrase(others))}` : "";
-  const unique = count - sharedPeople.length;
-  if (unique <= 0) return `${shared} shared${withClause}`;
-  return `${total} <span class="res-note">(${unique} unique + ${shared} shared${withClause})</span>`;
+  const projects = bulletList(elsewhereLabels(sharedPeople, homeIds), "share-projects");
+  const shared = countCell(sharedPeople.length, "shared", resourceKey, label);
+  const uniqueCount = uniquePeople(people, sharedPeople).length;
+  if (uniqueCount <= 0) return `<div>${shared} shared</div>${projects}`;
+  const unique = countCell(uniqueCount, "unique", resourceKey, label);
+  return `<div class="res-line">${total}</div><ul class="share-list"><li>${unique} unique</li><li>${shared} shared${projects}</li></ul>`;
 }
 
 function stateCell(status: ProjectStatus): string {
   return escapeHtml(projectStatusLabel(status));
 }
 
-function groupResourceNote(group: ReportGroup): string {
+function outsideProjectLabels(people: ReportSharedResource[], groupName: string): string[] {
+  const labels = new Set<string>();
+  for (const person of people) {
+    for (const assignment of person.assignments) {
+      if ((assignment.group_name || "No group") === groupName) continue;
+      const name = assignment.parent_name
+        ? `${assignment.parent_name} / ${assignment.project_name}`
+        : assignment.project_name;
+      labels.add(assignment.group_name ? `${assignment.group_name} · ${name}` : name);
+    }
+  }
+  return [...labels];
+}
+
+function groupResourceNote(group: ReportGroup, key: string): string {
   const shared = group.shared_with_other_groups;
-  const total = group.resources.length;
-  if (total === 0) return "None assigned";
+  if (group.resources.length === 0) return "None assigned";
   if (shared.length === 0) return "No sharing across groups";
-  const unique = total - shared.length;
-  const names = listPhrase(shared.map((person) => person.name));
-  const sharedPart =
-    shared.length === 1
-      ? `1 also assigned outside this group (${escapeHtml(names)})`
-      : `${shared.length} also assigned outside this group (${escapeHtml(names)})`;
-  if (unique <= 0) return sharedPart.charAt(0).toUpperCase() + sharedPart.slice(1);
-  const uniquePart = unique === 1 ? "1 unique" : `${unique} unique`;
-  return `${uniquePart}. ${sharedPart.charAt(0).toUpperCase()}${sharedPart.slice(1)}.`;
+  const projects = bulletList(outsideProjectLabels(shared, group.name), "share-projects");
+  const sharedCount = countCell(shared.length, "group-shared", `${key}-other`, group.name);
+  const uniqueCount = uniquePeople(group.resources, shared).length;
+  if (uniqueCount <= 0) return `<div>${sharedCount} shared</div>${projects}`;
+  const unique = countCell(uniqueCount, "unique", key, group.name);
+  return `<div>${unique} unique</div><div>${sharedCount} shared</div>${projects}`;
 }
 
 function projectTableRows(
   projects: ReportProject[],
   resources: Record<string, ReportSharedResource[]>,
   shared: Record<string, ReportSharedResource[]>,
+  unique: Record<string, ReportSharedResource[]>,
 ): string {
   return projects
     .map((project) => {
       const rootKey = `project-${project.id}`;
       resources[rootKey] = project.resources;
       shared[rootKey] = project.shared_resources;
+      unique[rootKey] = uniquePeople(project.resources, project.shared_resources);
       const homeIds = new Set([project.id, ...project.sub_projects.map((sub) => sub.id)]);
       const root = `<tr>
         <td>${escapeHtml(project.name)}</td>
         <td>${textBlock(project.description)}</td>
-        <td class="res">${resourceCell(project.resources.length, project.shared_resources, rootKey, rootKey, project.name, homeIds)}</td>
+        <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds)}</td>
         <td class="state">${stateCell(project.status)}</td>
         <td class="st">${textBlock(project.latest_status)}</td>
       </tr>`;
@@ -157,11 +176,12 @@ function projectTableRows(
           const subKey = `project-${sub.id}`;
           resources[subKey] = sub.resources;
           shared[subKey] = sub.shared_resources;
+          unique[subKey] = uniquePeople(sub.resources, sub.shared_resources);
           const label = `${project.name} / ${sub.name}`;
           return `<tr class="sub">
         <td class="sub-name">${escapeHtml(sub.name)}</td>
         <td>${textBlock(sub.description)}</td>
-        <td class="res">${resourceCell(sub.resources.length, sub.shared_resources, subKey, subKey, label, new Set([sub.id]))}</td>
+        <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]))}</td>
         <td class="state">${stateCell(sub.status)}</td>
         <td class="st">${textBlock(sub.latest_status)}</td>
       </tr>`;
@@ -176,6 +196,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const generated = formatUpdated(new Date().toISOString());
   const resources: Record<string, ReportSharedResource[]> = {};
   const shared: Record<string, ReportSharedResource[]> = {};
+  const unique: Record<string, ReportSharedResource[]> = {};
   const projectTotal = groups.reduce((sum, group) => sum + group.project_count, 0);
   const uniqueResources = new Set(groups.flatMap((group) => group.resources.map((person) => person.id)));
   const summaryRows = groups
@@ -183,11 +204,13 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       const tone = toneForGroup(group.name, index);
       const key = `group-${group.id ?? "none"}`;
       resources[key] = group.resources;
+      shared[`${key}-other`] = group.shared_with_other_groups;
+      unique[key] = uniquePeople(group.resources, group.shared_with_other_groups);
       return `<tr class="row-${tone}">
             <td><span class="tag ${tone}">${escapeHtml(group.name)}</span></td>
             <td class="num">${group.project_count}</td>
             <td class="num">${countCell(group.resources.length, "resources", key, group.name)}</td>
-            <td>${groupResourceNote(group)}</td>
+            <td>${groupResourceNote(group, key)}</td>
           </tr>`;
     })
     .join("");
@@ -216,7 +239,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const sections = groups
     .map((group, index) => {
       const tone = toneForGroup(group.name, index);
-      const rows = projectTableRows(group.projects, resources, shared);
+      const rows = projectTableRows(group.projects, resources, shared, unique);
       return `<h2 class="${tone}">Project family — ${escapeHtml(group.name)}</h2>
       <table class="family ${tone}">
         <thead>
@@ -232,7 +255,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       </table>`;
     })
     .join("");
-  const listJson = JSON.stringify({ resources, shared }).replace(/</g, "\\u003c");
+  const listJson = JSON.stringify({ resources, shared, unique }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -380,10 +403,15 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       border-bottom: 0;
     }
     th.num, td.num { text-align: right; white-space: nowrap; width: 1%; }
-    td.res { width: 18%; }
+    td.res { width: 24%; }
     td.state { width: 1%; white-space: nowrap; }
     td.st { width: 28%; }
-    .res-note { font-weight: 400; }
+    .res-line { font-weight: 600; }
+    ul.share-list, ul.share-projects {
+      margin: 4px 0 0;
+      padding-left: 1.15em;
+    }
+    ul.share-projects { margin-top: 2px; }
     tbody tr:nth-child(even) { background: var(--wash); }
     tbody tr.total { background: #dbeafe; font-weight: 600; }
     tbody tr.total td { border-bottom: 0; }
@@ -522,10 +550,17 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       return assignment.group_name ? assignment.group_name + " · " + name : name;
     }
     function openList(kind, key, label) {
-      const bucket = kind === "resources" ? listData.resources : listData.shared;
+      const buckets = {
+        resources: listData.resources,
+        unique: listData.unique,
+        shared: listData.shared,
+        "group-shared": listData.shared,
+      };
+      const bucket = buckets[kind] || listData.shared;
       const people = (bucket && bucket[key]) || [];
       const headings = {
         resources: "Resources — ",
+        unique: "Unique resources — ",
         shared: "Shared resources — ",
         "group-shared": "Shared with other groups — ",
       };
