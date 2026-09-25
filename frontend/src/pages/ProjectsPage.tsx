@@ -129,10 +129,11 @@ function resourceCell(
     shareProjects,
   );
   const shared = countCell(sharedPeople.length, "shared", resourceKey, label);
+  const sharedPhrase = projects ? `${shared} shared with ${projects}` : `${shared} shared`;
   const uniqueCount = uniquePeople(people, sharedPeople).length;
-  if (uniqueCount <= 0) return `<div>${shared} shared</div>${projects}`;
+  if (uniqueCount <= 0) return `<div>${sharedPhrase}</div>`;
   const unique = countCell(uniqueCount, "unique", resourceKey, label);
-  return `<div class="res-line">${total}</div><ul class="share-list"><li>${unique} unique</li><li>${shared} shared${projects}</li></ul>`;
+  return `<div class="res-line">${total}</div><ul class="share-list"><li>${unique} unique</li><li>${sharedPhrase}</li></ul>`;
 }
 
 function stateCell(status: ProjectStatus): string {
@@ -148,12 +149,66 @@ function statusReportIsStale(reportedAt: string | null | undefined): boolean {
   return Date.now() - reported > STATUS_REPORT_STALE_MS;
 }
 
-function statusCell(body: string | null | undefined, reportedAt: string | null | undefined): string {
-  const text = textBlock(body);
-  if (!statusReportIsStale(reportedAt)) return text;
-  const title = `Last status report is more than a week old (${formatUpdated(reportedAt as string)})`;
+function staleStatusMark(reportedAt: string): string {
+  const title = `Last status report is more than a week old (${formatUpdated(reportedAt)})`;
   const label = escapeHtml(title);
-  return `<span class="status-stale" title="${label}"><svg viewBox="0 0 24 24" aria-label="${label}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>${text}`;
+  return `<span class="status-stale" title="${label}"><svg viewBox="0 0 24 24" aria-label="${label}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>`;
+}
+
+function textThroughFirstBlank(value: string): { preview: string; hasMore: boolean } {
+  const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  const breakAt = normalized.search(/\n[ \t]*\n/);
+  if (breakAt === -1) return { preview: normalized, hasMore: false };
+  const preview = normalized.slice(0, breakAt).trim();
+  const rest = normalized.slice(breakAt).trim();
+  if (!preview || !rest) return { preview: normalized, hasMore: false };
+  return { preview, hasMore: true };
+}
+
+function clippedTextCell(
+  raw: string,
+  textKey: string,
+  label: string,
+  store: Record<string, string>,
+  linkText: string,
+  kind: "status" | "description",
+): string {
+  const { preview, hasMore } = textThroughFirstBlank(raw);
+  if (!hasMore) return textBlock(preview);
+  store[textKey] = raw;
+  const button = `<button type="button" class="status-more" data-text-kind="${kind}" data-status-key="${escapeHtml(textKey)}" data-label="${escapeHtml(label)}">${escapeHtml(linkText)}</button>`;
+  const lines = textBlock(preview).split("<br>");
+  const lastLine = lines.pop() ?? "";
+  const earlier = lines.length ? `${lines.join("<br>")}<br>` : "";
+  const tail = lastLine.match(/^(.*?)(\S+)\s*$/);
+  const screen = tail
+    ? `${earlier}${tail[1]}<span class="status-tail">${tail[2]} ${button}</span>`
+    : `${earlier}<span class="status-tail">${lastLine} ${button}</span>`;
+  return `<span class="status-screen">${screen}</span><span class="status-full-print">${textBlock(raw)}</span>`;
+}
+
+function descriptionCell(
+  body: string | null | undefined,
+  textKey: string,
+  label: string,
+  descriptions: Record<string, string>,
+): string {
+  const raw = body?.trim();
+  if (!raw) return "Not available.";
+  return clippedTextCell(raw, textKey, label, descriptions, "See complete description", "description");
+}
+
+function statusCell(
+  body: string | null | undefined,
+  reportedAt: string | null | undefined,
+  statusKey: string,
+  label: string,
+  statuses: Record<string, string>,
+): string {
+  const raw = body?.trim();
+  if (!raw) return "";
+  const stale = statusReportIsStale(reportedAt) ? staleStatusMark(reportedAt as string) : "";
+  return `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status")}`;
 }
 
 function outsideProjectLabels(people: ReportSharedResource[], groupName: string): string[] {
@@ -185,10 +240,11 @@ function groupResourceNote(
     shareProjects,
   );
   const sharedCount = countCell(shared.length, "group-shared", `${key}-other`, group.name);
+  const sharedPhrase = projects ? `${sharedCount} shared with ${projects}` : `${sharedCount} shared`;
   const uniqueCount = uniquePeople(group.resources, shared).length;
-  if (uniqueCount <= 0) return `<div>${sharedCount} shared</div>${projects}`;
+  if (uniqueCount <= 0) return `<div>${sharedPhrase}</div>`;
   const unique = countCell(uniqueCount, "unique", key, group.name);
-  return `<div>${unique} unique</div><div>${sharedCount} shared</div>${projects}`;
+  return `<div>${unique} unique</div><div>${sharedPhrase}</div>`;
 }
 
 function projectTableRows(
@@ -197,6 +253,8 @@ function projectTableRows(
   shared: Record<string, ReportSharedResource[]>,
   unique: Record<string, ReportSharedResource[]>,
   shareProjects: Record<string, string[]>,
+  statuses: Record<string, string>,
+  descriptions: Record<string, string>,
 ): string {
   return projects
     .map((project) => {
@@ -205,12 +263,18 @@ function projectTableRows(
       shared[rootKey] = project.shared_resources;
       unique[rootKey] = uniquePeople(project.resources, project.shared_resources);
       const homeIds = new Set([project.id, ...project.sub_projects.map((sub) => sub.id)]);
-      const root = `<tr>
-        <td>${escapeHtml(project.name)}</td>
-        <td>${textBlock(project.description)}</td>
+      const subCount = project.sub_projects.length;
+      const subLabel = subCount === 1 ? "1 sub-project" : `${subCount} sub-projects`;
+      const expand =
+        subCount > 0
+          ? `<button type="button" class="expand" aria-expanded="false" aria-label="Show ${subLabel}"><span class="chevron" aria-hidden="true">▶</span> ${subLabel}</button>`
+          : "";
+      const root = `<tr data-project="${project.id}">
+        <td>${escapeHtml(project.name)}${expand}</td>
+        <td>${descriptionCell(project.description, rootKey, project.name, descriptions)}</td>
         <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds, shareProjects)}</td>
         <td class="state">${stateCell(project.status)}</td>
-        <td class="st">${statusCell(project.latest_status, project.latest_status_at)}</td>
+        <td class="st">${statusCell(project.latest_status, project.latest_status_at, rootKey, project.name, statuses)}</td>
       </tr>`;
       const subs = project.sub_projects
         .map((sub) => {
@@ -219,12 +283,12 @@ function projectTableRows(
           shared[subKey] = sub.shared_resources;
           unique[subKey] = uniquePeople(sub.resources, sub.shared_resources);
           const label = `${project.name} / ${sub.name}`;
-          return `<tr class="sub">
+          return `<tr class="sub" data-parent="${project.id}">
         <td class="sub-name">${escapeHtml(sub.name)}</td>
-        <td>${textBlock(sub.description)}</td>
+        <td>${descriptionCell(sub.description, subKey, label, descriptions)}</td>
         <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]), shareProjects)}</td>
         <td class="state">${stateCell(sub.status)}</td>
-        <td class="st">${statusCell(sub.latest_status, sub.latest_status_at)}</td>
+        <td class="st">${statusCell(sub.latest_status, sub.latest_status_at, subKey, label, statuses)}</td>
       </tr>`;
         })
         .join("");
@@ -239,6 +303,8 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const shared: Record<string, ReportSharedResource[]> = {};
   const unique: Record<string, ReportSharedResource[]> = {};
   const shareProjects: Record<string, string[]> = {};
+  const statuses: Record<string, string> = {};
+  const descriptions: Record<string, string> = {};
   const projectTotal = groups.reduce((sum, group) => sum + group.project_count, 0);
   const uniqueResources = new Set(groups.flatMap((group) => group.resources.map((person) => person.id)));
   const summaryRows = groups
@@ -252,7 +318,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
             <td><span class="tag ${tone}">${escapeHtml(group.name)}</span></td>
             <td class="num">${group.project_count}</td>
             <td class="num">${countCell(group.resources.length, "resources", key, group.name)}</td>
-            <td>${groupResourceNote(group, key, shareProjects)}</td>
+            <td class="notes">${groupResourceNote(group, key, shareProjects)}</td>
           </tr>`;
     })
     .join("");
@@ -264,7 +330,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
             <th>Project family</th>
             <th class="num">Projects</th>
             <th class="num">Engineering resources</th>
-            <th>Resource notes</th>
+            <th class="notes">Resource notes</th>
           </tr>
         </thead>
         <tbody>
@@ -273,7 +339,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
             <td>Total</td>
             <td class="num">${projectTotal}</td>
             <td class="num">${uniqueResources.size}</td>
-            <td></td>
+            <td class="notes"></td>
           </tr>
         </tbody>
       </table>`
@@ -281,7 +347,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
   const sections = groups
     .map((group, index) => {
       const tone = toneForGroup(group.name, index);
-      const rows = projectTableRows(group.projects, resources, shared, unique, shareProjects);
+      const rows = projectTableRows(group.projects, resources, shared, unique, shareProjects, statuses, descriptions);
       return `<h2 class="${tone}">Project family — ${escapeHtml(group.name)}</h2>
       <table class="family ${tone}">
         <thead>
@@ -297,7 +363,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       </table>`;
     })
     .join("");
-  const listJson = JSON.stringify({ resources, shared, unique, shareProjects }).replace(/</g, "\\u003c");
+  const listJson = JSON.stringify({ resources, shared, unique, shareProjects, statuses, descriptions }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -445,6 +511,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       border-bottom: 0;
     }
     th.num, td.num { text-align: right; white-space: nowrap; width: 1%; }
+    th.notes, td.notes { text-align: right; }
     td.res { width: 24%; }
     td.state { width: 1%; white-space: nowrap; }
     td.st { width: 28%; }
@@ -457,16 +524,36 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       color: #b42318;
     }
     .status-stale svg { display: block; width: 16px; height: 16px; }
+    .status-tail { white-space: nowrap; }
+    button.status-more {
+      display: inline;
+      margin: 0;
+      border: 0;
+      padding: 0;
+      background: none;
+      color: var(--navy-2);
+      font: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    .status-full-print { display: none; }
+    .status-dialog-body {
+      margin: 0;
+      padding: 16px 20px 20px;
+      white-space: pre-wrap;
+      font-size: 14px;
+      line-height: 1.45;
+    }
     .res-line { font-weight: 600; }
     ul.share-list {
       margin: 4px 0 0;
       padding-left: 1.15em;
     }
     button.share-projects-btn {
-      display: block;
-      margin-top: 2px;
-      font-size: 12px;
-      font-weight: 600;
+      display: inline;
+      font-size: inherit;
+      font-weight: 700;
       text-align: left;
     }
     ul.share-projects-print, ul.share-dialog-list { margin: 2px 0 0; padding-left: 1.15em; }
@@ -494,6 +581,23 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
     tr.row-na td:first-child { box-shadow: inset 5px 0 0 var(--na); }
     tbody tr:not(.sub) td:first-child { font-weight: 600; }
     tr.total td:first-child { font-weight: 600; }
+    tr.sub { display: none; }
+    tr.sub.is-open { display: table-row; }
+    button.expand {
+      display: block;
+      margin: 2px 0 0;
+      border: 0;
+      padding: 0;
+      background: none;
+      color: var(--navy-2);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      text-align: left;
+      white-space: nowrap;
+    }
+    button.expand .chevron { display: inline-block; width: 0.9em; }
     .sub-name { padding-left: 22px; color: var(--muted); font-weight: 400; }
     button.count-btn {
       border: 0;
@@ -568,7 +672,9 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       }
       h2 { break-after: avoid; }
       table { break-inside: avoid; }
-      button.print, .shared-backdrop, button.share-projects-btn { display: none; }
+      button.print, .shared-backdrop, button.share-projects-btn, button.expand, button.status-more, .status-screen { display: none; }
+      .status-full-print { display: inline; }
+      tr.sub { display: table-row; }
       ul.share-projects-print { display: block; }
     }
   </style>
@@ -586,7 +692,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. A red mark in Status means the last status report is more than a week old.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. Description and status show through the first blank line. Select See complete description or See complete status when the text continues. A red mark in Status means the last status report is more than a week old.</p>
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
@@ -667,6 +773,40 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       dialog.hidden = false;
     }
     document.body.addEventListener("click", (event) => {
+      const expand = event.target.closest(".expand");
+      if (expand) {
+        event.preventDefault();
+        const row = expand.closest("tr");
+        const id = row && row.dataset.project;
+        const open = expand.getAttribute("aria-expanded") === "true";
+        const nextOpen = !open;
+        expand.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+        const countLabel = expand.textContent.replace(/^\\s*[▶▼]\\s*/, "").trim();
+        expand.setAttribute("aria-label", (nextOpen ? "Hide " : "Show ") + countLabel);
+        const chevron = expand.querySelector(".chevron");
+        if (chevron) chevron.textContent = nextOpen ? "▼" : "▶";
+        document.querySelectorAll('tr.sub[data-parent="' + id + '"]').forEach((sub) => {
+          sub.classList.toggle("is-open", nextOpen);
+        });
+        return;
+      }
+      const statusButton = event.target.closest(".status-more");
+      if (statusButton) {
+        event.preventDefault();
+        const kind = statusButton.dataset.textKind || "status";
+        const key = statusButton.dataset.statusKey;
+        const store = kind === "description" ? listData.descriptions : listData.statuses;
+        const text = (store && store[key]) || "";
+        const heading = kind === "description" ? "Description — " : "Status — ";
+        title.textContent = heading + (statusButton.dataset.label || "");
+        body.replaceChildren();
+        const block = document.createElement("p");
+        block.className = "status-dialog-body";
+        block.textContent = text;
+        body.append(block);
+        dialog.hidden = false;
+        return;
+      }
       const button = event.target.closest(".count-btn");
       if (button) {
         event.preventDefault();
