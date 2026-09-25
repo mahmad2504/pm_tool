@@ -129,6 +129,7 @@ class SubProjectSummary(BaseModel):
     description: str | None
     status: ProjectLifecycle
     resource_count: int = 0
+    shared_count: int = 0
 
 
 class DuplicateResource(BaseModel):
@@ -160,6 +161,58 @@ class ProjectSummary(BaseModel):
 class ProjectListResponse(BaseModel):
     items: list[ProjectSummary]
     total: int
+
+
+class ReportAssignment(BaseModel):
+    project_id: int
+    project_name: str
+    parent_name: str | None = None
+    group_name: str | None = None
+    utilization_percent: int
+
+
+class ReportSharedResource(BaseModel):
+    id: int
+    name: str
+    assignments: list[ReportAssignment]
+
+
+class ReportSubProject(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    status: ProjectLifecycle
+    latest_status: str | None
+    resource_count: int
+    resources: list[ReportSharedResource]
+    shared_resources: list[ReportSharedResource]
+
+
+class ReportProject(BaseModel):
+    id: int
+    name: str
+    description: str | None
+    group_name: str | None
+    status: ProjectLifecycle
+    latest_status: str | None
+    resource_count: int
+    resources: list[ReportSharedResource]
+    shared_resources: list[ReportSharedResource]
+    sub_projects: list[ReportSubProject]
+
+
+class ReportGroup(BaseModel):
+    id: int | None
+    name: str
+    project_count: int
+    resource_count: int
+    resources: list[ReportSharedResource]
+    shared_with_other_groups: list[ReportSharedResource]
+    projects: list[ReportProject]
+
+
+class ProjectReportResponse(BaseModel):
+    groups: list[ReportGroup]
 
 
 class ProjectDetail(BaseModel):

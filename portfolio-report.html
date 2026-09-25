@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Logic Silicon project portfolio — 21 Sep 2026</title>
+  <style>
+    :root {
+      --ink: #1c2430;
+      --muted: #5c6570;
+      --rule: #d8dde3;
+      --paper: #ffffff;
+      --wash: #f4f6f8;
+      --navy: #16324f;
+      --navy-2: #1e4a73;
+      --gold: #c9a227;
+      --sw: #0f766e;
+      --dv: #4338ca;
+      --ai: #c2410c;
+      --na: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e8ecef;
+      font: 15px/1.55 "Calibri", "Segoe UI", Arial, sans-serif;
+    }
+    .page {
+      max-width: 920px;
+      margin: 28px auto 48px;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+    }
+    header {
+      background: linear-gradient(120deg, #0f2740 0%, #1e4a73 58%, #0f766e 100%);
+      color: #fff;
+      padding: 28px 36px 24px;
+      border-bottom: 5px solid var(--gold);
+    }
+    header p {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.78;
+    }
+    header h1 {
+      margin: 8px 0 6px;
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    header .sub {
+      margin: 0;
+      font-size: 14.5px;
+      line-height: 1.45;
+      opacity: 0.9;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    .body { padding: 28px 36px 40px; }
+    .kpis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 0 0 18px;
+    }
+    .kpi {
+      border: 1px solid var(--rule);
+      border-left: 6px solid var(--navy);
+      padding: 14px 16px;
+    }
+    .kpi.navy { border-left-color: var(--navy); background: #eef4fb; }
+    .kpi.teal { border-left-color: var(--sw); background: #f0fdfa; }
+    .kpi b {
+      display: block;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--navy);
+      line-height: 1.1;
+    }
+    .kpi.teal b { color: var(--sw); }
+    .kpi span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    mark {
+      background: #fde047;
+      color: inherit;
+      padding: 0 0.15em;
+    }
+    h2 {
+      margin: 28px 0 10px;
+      padding: 8px 0 8px 12px;
+      border-top: 1px solid var(--rule);
+      border-left: 5px solid var(--navy-2);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--navy-2);
+    }
+    h2:first-of-type { margin-top: 4px; padding-top: 8px; border-top: 0; }
+    h2.sw { color: var(--sw); border-left-color: var(--sw); }
+    h2.dv { color: var(--dv); border-left-color: var(--dv); }
+    h2.ai { color: var(--ai); border-left-color: var(--ai); }
+    h2.na { color: var(--na); border-left-color: var(--na); }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .tag.sw { background: #ccfbf1; color: #115e59; }
+    .tag.dv { background: #e0e7ff; color: #3730a3; }
+    .tag.ai { background: #ffedd5; color: #9a3412; }
+    .tag.na { background: #dcfce7; color: #166534; }
+    p.lead { margin: 0 0 16px; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      border-bottom: 1px solid var(--rule);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--navy);
+      color: #fff;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 0;
+    }
+    th.num, td.num { text-align: right; white-space: nowrap; width: 1%; }
+    td.res { width: 22%; }
+    td.st { width: 28%; }
+    tbody tr:nth-child(even) { background: var(--wash); }
+    tbody tr.total { background: #dbeafe; font-weight: 600; }
+    tbody tr.total td { border-bottom: 0; }
+    table.family { border-top: 4px solid var(--navy); }
+    table.sw { border-top-color: var(--sw); }
+    table.dv { border-top-color: var(--dv); }
+    table.ai { border-top-color: var(--ai); }
+    table.na { border-top-color: var(--na); }
+    table.sw th { background: var(--sw); }
+    table.dv th { background: var(--dv); }
+    table.ai th { background: var(--ai); }
+    table.na th { background: var(--na); }
+    tr.row-sw { background: #f0fdfa; }
+    tr.row-dv { background: #eef2ff; }
+    tr.row-ai { background: #fff7ed; }
+    tr.row-na { background: #f0fdf4; }
+    tr.row-sw td:first-child { box-shadow: inset 5px 0 0 var(--sw); }
+    tr.row-dv td:first-child { box-shadow: inset 5px 0 0 var(--dv); }
+    tr.row-ai td:first-child { box-shadow: inset 5px 0 0 var(--ai); }
+    tr.row-na td:first-child { box-shadow: inset 5px 0 0 var(--na); }
+    @media (max-width: 720px) {
+      .page { margin: 0; border: 0; }
+      header, .body { padding: 20px; }
+      .kpis { grid-template-columns: 1fr; }
+    }
+    @media print {
+      body { background: #fff; }
+      .page { margin: 0; border: 0; }
+      header, th, .kpi, .tag, tbody tr {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      h2 { break-after: avoid; }
+      table { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <p>Logic Silicon · Management briefing</p>
+      <h1>Project portfolio</h1>
+      <p class="sub">Projects under PMO Radar — 21 September 2026. Individual task status is not included.</p>
+    </header>
+
+    <div class="body">
+      <div class="kpis">
+        <div class="kpi navy"><b>20</b><span>Projects currently tracked</span></div>
+        <div class="kpi teal"><b>53</b><span>Engineering resources (de-duplicated)</span></div>
+      </div>
+      <p class="lead">Almost all of the work is Altera. Engineering resources are counted once when a person appears on more than one project.</p>
+
+      <h2>Summary by project family</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Project family</th>
+            <th class="num">Projects</th>
+            <th class="num">Engineering resources</th>
+            <th>Resource notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row-ai">
+            <td><span class="tag ai">Physical AI</span></td>
+            <td class="num">3</td>
+            <td class="num">10</td>
+            <td>5 unique on Agilex 7 (2 of them also on Agilex 5). 5 unique on AI Skill. Agilex 5 software still unassigned.</td>
+          </tr>
+          <tr class="row-dv">
+            <td><span class="tag dv">Design verification</span></td>
+            <td class="num">11</td>
+            <td class="num">16</td>
+            <td>1 shared between PR Controller and SPI; 1 on mSG-DMA, Soft Pipe (dormant), and LVDS oversight; 1 shared between PR IP DV and SEU IP DV. GHRD: 2 unique.</td>
+          </tr>
+          <tr class="row-sw">
+            <td><span class="tag sw">Software</span></td>
+            <td class="num">5</td>
+            <td class="num">26</td>
+            <td>No sharing across software projects</td>
+          </tr>
+          <tr class="row-na">
+            <td><span class="tag na">Non-Altera</span></td>
+            <td class="num">1</td>
+            <td class="num">1</td>
+            <td>1 unique (Zero Power)</td>
+          </tr>
+          <tr class="total">
+            <td>Total</td>
+            <td class="num">20</td>
+            <td class="num">53</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 class="ai">Project family — Physical AI</h2>
+      <table class="family ai">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Description</th>
+            <th>Engineering resources</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Agilex 7 HSB / AD9986 Spark integration</td>
+            <td>High-bandwidth sensor bridge: AD9986 → Agilex 7 → xG Ethernet/RoCE → NVIDIA DGX Spark / Holoscan.</td>
+            <td class="res">5 (3 unique + 2 shared with Agilex 5)</td>
+            <td class="st">Goal achieved — cleanup in progress.</td>
+          </tr>
+          <tr>
+            <td>Agilex 5 HSB / YOLO integration demo</td>
+            <td>Physical AI demo on Agilex 5: ISP + AI inference, plus Holoscan so processed images go over Ethernet to an NVIDIA GPU. ISP and end-to-end demo are under review. Software driver / SDK app is unassigned.</td>
+            <td class="res">2 shared with project above</td>
+            <td class="st">In execution. Due 15 October 2026. <mark><strong>Software resource still unassigned.</strong></mark></td>
+          </tr>
+          <tr>
+            <td>AI Skill</td>
+            <td>Automation using AI skills.</td>
+            <td class="res">5</td>
+            <td class="st">Preliminary demonstration shared with Altera; initial feedback is being incorporated as the work progresses.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 class="sw">Project family — Software</h2>
+      <table class="family sw">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Description</th>
+            <th>Engineering resources</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>SDM Functional Safety</td>
+            <td>Logic Silicon works with the team in Bangalore, which owns and assigns the work.</td>
+            <td class="res">7</td>
+            <td class="st">Sprint 4 in progress (Sprint 3 complete).</td>
+          </tr>
+          <tr>
+            <td>Windows PCIe drivers</td>
+            <td>Windows drivers for Altera FPGA PCIe DMA. Arria 10 and Stratix 10 H-Tile drivers and test applications have been delivered. Current delivery target is the Agilex-7 Windows PCIe MCDMA stack; Agilex 5E work follows the upcoming IP release.</td>
+            <td class="res">5</td>
+            <td class="st">In execution — Agilex-7 MCDMA groundwork and board bring-up.</td>
+          </tr>
+          <tr>
+            <td>HPS Zephyr</td>
+            <td>Zephyr OS stack for the Agilex HPS subsystem (drivers, samples, framework, processor-side software, and FPGA fabric interaction).</td>
+            <td class="res">5</td>
+            <td class="st">In execution — NAND boot, Agilex 3 regression, and Agilex 5 bring-up, aligned to release 26.3.1 by end of September.</td>
+          </tr>
+          <tr>
+            <td>HPS Linux</td>
+            <td>HPS board bring-up and Linux software stack for Agilex: SPL → ATF → U-Boot → Linux, drivers, and hardware/software integration.</td>
+            <td class="res">5</td>
+            <td class="st">In execution — HPS Linux / board bring-up, including Ethernet/MAC driver alignment.</td>
+          </tr>
+          <tr>
+            <td>HPS FreeRTOS</td>
+            <td>FreeRTOS OS stack for the Agilex HPS subsystem (drivers, samples, framework, processor-side software, and FPGA fabric interaction).</td>
+            <td class="res">4</td>
+            <td class="st">In execution — Agilex 3 and Agilex 5 board drivers and applications for release 26.3.1.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 class="dv">Project family — Design verification</h2>
+      <table class="family dv">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Description</th>
+            <th>Engineering resources</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>LVDS DV</td>
+            <td>LVDS (Low Voltage Differential Signaling) DV.</td>
+            <td class="res">4 (1 shared with mSG-DMA DV / Soft Pipe)</td>
+            <td class="st">Test creation and regression complete. Result verification blocked on SPETC access.</td>
+          </tr>
+          <tr>
+            <td>MIPI PHY (KM) DV</td>
+            <td>Independent DV of MIPI C-PHY v2.1 and D-PHY v3.0 for unreleased Kinneola Mesa.</td>
+            <td class="res">2</td>
+            <td class="st">D-PHY behavioural VIP delivered to Altera. C-PHY behavioural VIP submitted; regression in progress. HSIO RTL verification follows behavioural completion.</td>
+          </tr>
+          <tr>
+            <td>SDM IP DV</td>
+            <td>SDM-level SystemVerilog check of nCATTRIP thermal-trip behavior against internal and external DTS alarms.</td>
+            <td class="res">2</td>
+            <td class="st">DTS testing and Analog partition GLS in progress. GLS and regression targeted for completion this week.</td>
+          </tr>
+          <tr>
+            <td>mSG-DMA DV</td>
+            <td>Stabilize, debug, and modernize the UVM-based verification environment for reliable long-term regression on updated toolchains.</td>
+            <td class="res">1 (same resource is also on Soft Pipe, which is dormant, and LVDS oversight)</td>
+            <td class="st">Prefetcher-disabled regression in progress. RTL issue EIP-2370 blocks Mod1 packetization tests. Verification closure targeted end of September.</td>
+          </tr>
+          <tr>
+            <td>Soft Pipe DV</td>
+            <td>Not available.</td>
+            <td class="res">1, shared with mSG-DMA DV</td>
+            <td class="st">Dormant — no task assigned.</td>
+          </tr>
+          <tr>
+            <td>PR IP DV</td>
+            <td>Partial Reconfiguration IP DV.</td>
+            <td class="res">1 (same resource is also on SEU IP DV)</td>
+            <td class="st">Altera feedback received; test plan being updated. Waiting on Umadevi for ITF + AVATAR.</td>
+          </tr>
+          <tr>
+            <td>DFD IP DV</td>
+            <td>Design-for-debug IP verification.</td>
+            <td class="res">2</td>
+            <td class="st"><code>full_tree</code> testing complete. Compile/simulation optimization continues. One engineer awaiting next assignment.</td>
+          </tr>
+          <tr>
+            <td>PR Controller DV</td>
+            <td>UVM verification of the FPGA Partial Reconfiguration Controller.</td>
+            <td class="res">2 (1 shared with SPI Avalon MM Bridge DV)</td>
+            <td class="st">UVM agent/model coding in progress. Timeline to be reassessed after one engineer was reassigned (17 September).</td>
+          </tr>
+          <tr>
+            <td>SPI Avalon MM Bridge DV</td>
+            <td>Verification of SPI-to-Avalon memory-mapped bridge IP on Agilex (software-driven on Nios, not UVM-based).</td>
+            <td class="res">2 (1 shared with PR Controller DV)</td>
+            <td class="st">Environment setup complete; remaining test scenarios pending. One engineer has been removed from the project.</td>
+          </tr>
+          <tr>
+            <td>SEU IP DV</td>
+            <td>Single Event Upset (SEU) IP identifies changes in configuration bits in Configuration RAM (CRAM). Design verification covers environment setup, test-plan generation, and test execution.</td>
+            <td class="res">1 (same resource is also on PR IP DV)</td>
+            <td class="st">ITF + Avatar analysis underway. Test plan initial review done; further work constrained by evolving specs. Test execution has not started.</td>
+          </tr>
+          <tr>
+            <td>GHRD IP DV</td>
+            <td>Golden Hardware Reference Design (GHRD): migration from v1.0 to v2.0, IP upgrade, and CI/CD pipeline work.</td>
+            <td class="res">2</td>
+            <td class="st">Upgrading the External Memory Interface (EMIF) IP within the HPS subsystem from the currently integrated older version to the newer version.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h2 class="na">Project family — Non-Altera</h2>
+      <table class="family na">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Description</th>
+            <th>Engineering resources</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Zero Power</td>
+            <td>Digital design and verification around a generic motor-controller IC/core.</td>
+            <td class="res">1 (unique)</td>
+            <td class="st">Dormant — onboarding and technical material study; no specific task assigned yet.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

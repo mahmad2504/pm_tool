@@ -3,7 +3,11 @@ import { Link } from "react-router-dom";
 import {
   GroupItem,
   projectRoleLabel,
+  projectStatusLabel,
   ProjectSummary,
+  ReportGroup,
+  ReportProject,
+  ReportSharedResource,
   StatusReport,
   PROJECT_STATUSES,
   ProjectStatus,
@@ -16,6 +20,7 @@ import {
   listGroups,
   listProjects,
   listStatusReports,
+  projectReport,
   patchProject,
   updateGroup,
   updateStatusReport,
@@ -35,6 +40,535 @@ function formatUpdated(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function countCell(
+  count: number,
+  kind: "resources" | "shared" | "group-shared",
+  key: string,
+  label: string,
+): string {
+  if (count === 0) return "0";
+  return `<button type="button" class="count-btn" data-kind="${kind}" data-key="${escapeHtml(key)}" data-label="${escapeHtml(label)}">${count}</button>`;
+}
+
+const groupTones = ["sw", "dv", "ai", "na"] as const;
+
+function textBlock(value: string | null | undefined, empty = "Not available."): string {
+  const text = value?.trim();
+  if (!text) return empty;
+  return escapeHtml(text).replace(/\r\n|\r|\n/g, "<br>");
+}
+
+function toneForGroup(name: string, index: number): (typeof groupTones)[number] {
+  const normalized = name.toLowerCase();
+  if (normalized.includes("physical ai") || /\bai\b/.test(normalized)) return "ai";
+  if (normalized.includes("verification")) return "dv";
+  if (normalized.includes("software")) return "sw";
+  if (normalized.includes("non-altera") || normalized.includes("non altera")) return "na";
+  return groupTones[index % groupTones.length];
+}
+
+function listPhrase(items: string[], limit = 3): string {
+  if (items.length <= limit) return items.join(", ");
+  return `${items.slice(0, limit).join(", ")} and ${items.length - limit} more`;
+}
+
+function elsewhereLabels(people: ReportSharedResource[], homeIds: Set<number>): string[] {
+  const labels = new Set<string>();
+  for (const person of people) {
+    for (const assignment of person.assignments) {
+      if (homeIds.has(assignment.project_id)) continue;
+      const name = assignment.parent_name
+        ? `${assignment.parent_name} / ${assignment.project_name}`
+        : assignment.project_name;
+      labels.add(assignment.group_name ? `${assignment.group_name} · ${name}` : name);
+    }
+  }
+  return [...labels];
+}
+
+function resourceCell(
+  count: number,
+  sharedPeople: ReportSharedResource[],
+  resourceKey: string,
+  sharedKey: string,
+  label: string,
+  homeIds: Set<number>,
+): string {
+  const total = countCell(count, "resources", resourceKey, label);
+  if (sharedPeople.length === 0) return total;
+  const others = elsewhereLabels(sharedPeople, homeIds);
+  const shared = countCell(sharedPeople.length, "shared", sharedKey, label);
+  const withClause = others.length ? ` with ${escapeHtml(listPhrase(others))}` : "";
+  const unique = count - sharedPeople.length;
+  if (unique <= 0) return `${shared} shared${withClause}`;
+  return `${total} <span class="res-note">(${unique} unique + ${shared} shared${withClause})</span>`;
+}
+
+function stateCell(status: ProjectStatus): string {
+  return escapeHtml(projectStatusLabel(status));
+}
+
+function groupResourceNote(group: ReportGroup): string {
+  const shared = group.shared_with_other_groups;
+  const total = group.resources.length;
+  if (total === 0) return "None assigned";
+  if (shared.length === 0) return "No sharing across groups";
+  const unique = total - shared.length;
+  const names = listPhrase(shared.map((person) => person.name));
+  const sharedPart =
+    shared.length === 1
+      ? `1 also assigned outside this group (${escapeHtml(names)})`
+      : `${shared.length} also assigned outside this group (${escapeHtml(names)})`;
+  if (unique <= 0) return sharedPart.charAt(0).toUpperCase() + sharedPart.slice(1);
+  const uniquePart = unique === 1 ? "1 unique" : `${unique} unique`;
+  return `${uniquePart}. ${sharedPart.charAt(0).toUpperCase()}${sharedPart.slice(1)}.`;
+}
+
+function projectTableRows(
+  projects: ReportProject[],
+  resources: Record<string, ReportSharedResource[]>,
+  shared: Record<string, ReportSharedResource[]>,
+): string {
+  return projects
+    .map((project) => {
+      const rootKey = `project-${project.id}`;
+      resources[rootKey] = project.resources;
+      shared[rootKey] = project.shared_resources;
+      const homeIds = new Set([project.id, ...project.sub_projects.map((sub) => sub.id)]);
+      const root = `<tr>
+        <td>${escapeHtml(project.name)}</td>
+        <td>${textBlock(project.description)}</td>
+        <td class="res">${resourceCell(project.resources.length, project.shared_resources, rootKey, rootKey, project.name, homeIds)}</td>
+        <td class="state">${stateCell(project.status)}</td>
+        <td class="st">${textBlock(project.latest_status)}</td>
+      </tr>`;
+      const subs = project.sub_projects
+        .map((sub) => {
+          const subKey = `project-${sub.id}`;
+          resources[subKey] = sub.resources;
+          shared[subKey] = sub.shared_resources;
+          const label = `${project.name} / ${sub.name}`;
+          return `<tr class="sub">
+        <td class="sub-name">${escapeHtml(sub.name)}</td>
+        <td>${textBlock(sub.description)}</td>
+        <td class="res">${resourceCell(sub.resources.length, sub.shared_resources, subKey, subKey, label, new Set([sub.id]))}</td>
+        <td class="state">${stateCell(sub.status)}</td>
+        <td class="st">${textBlock(sub.latest_status)}</td>
+      </tr>`;
+        })
+        .join("");
+      return root + subs;
+    })
+    .join("");
+}
+
+function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): string {
+  const generated = formatUpdated(new Date().toISOString());
+  const resources: Record<string, ReportSharedResource[]> = {};
+  const shared: Record<string, ReportSharedResource[]> = {};
+  const projectTotal = groups.reduce((sum, group) => sum + group.project_count, 0);
+  const uniqueResources = new Set(groups.flatMap((group) => group.resources.map((person) => person.id)));
+  const summaryRows = groups
+    .map((group, index) => {
+      const tone = toneForGroup(group.name, index);
+      const key = `group-${group.id ?? "none"}`;
+      resources[key] = group.resources;
+      return `<tr class="row-${tone}">
+            <td><span class="tag ${tone}">${escapeHtml(group.name)}</span></td>
+            <td class="num">${group.project_count}</td>
+            <td class="num">${countCell(group.resources.length, "resources", key, group.name)}</td>
+            <td>${groupResourceNote(group)}</td>
+          </tr>`;
+    })
+    .join("");
+  const summary = groups.length
+    ? `<h2>Summary by project family</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Project family</th>
+            <th class="num">Projects</th>
+            <th class="num">Engineering resources</th>
+            <th>Resource notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${summaryRows}
+          <tr class="total">
+            <td>Total</td>
+            <td class="num">${projectTotal}</td>
+            <td class="num">${uniqueResources.size}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>`
+    : "";
+  const sections = groups
+    .map((group, index) => {
+      const tone = toneForGroup(group.name, index);
+      const rows = projectTableRows(group.projects, resources, shared);
+      return `<h2 class="${tone}">Project family — ${escapeHtml(group.name)}</h2>
+      <table class="family ${tone}">
+        <thead>
+          <tr>
+            <th>Project</th>
+            <th>Description</th>
+            <th>Engineering resources</th>
+            <th>State</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>`;
+    })
+    .join("");
+  const listJson = JSON.stringify({ resources, shared }).replace(/</g, "\\u003c");
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Project report</title>
+  <style>
+    :root {
+      --ink: #1c2430;
+      --muted: #5c6570;
+      --rule: #d8dde3;
+      --paper: #ffffff;
+      --wash: #f4f6f8;
+      --navy: #16324f;
+      --navy-2: #1e4a73;
+      --gold: #c9a227;
+      --sw: #0f766e;
+      --dv: #4338ca;
+      --ai: #c2410c;
+      --na: #15803d;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: #e8ecef;
+      font: 15px/1.55 "Calibri", "Segoe UI", Arial, sans-serif;
+    }
+    .page {
+      max-width: 920px;
+      margin: 28px auto 48px;
+      background: var(--paper);
+      border: 1px solid var(--rule);
+    }
+    .page > header {
+      position: relative;
+      background: linear-gradient(120deg, #0f2740 0%, #1e4a73 58%, #0f766e 100%);
+      color: #fff;
+      padding: 28px 36px 24px;
+      border-bottom: 5px solid var(--gold);
+    }
+    .page > header p {
+      margin: 0;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      opacity: 0.78;
+    }
+    .page > header h1 {
+      margin: 8px 0 6px;
+      font-size: 26px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page > header .sub {
+      margin: 0;
+      font-size: 14.5px;
+      line-height: 1.45;
+      opacity: 0.9;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+    button.print {
+      position: absolute;
+      top: 22px;
+      right: 28px;
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      padding: 6px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .body { padding: 28px 36px 40px; }
+    .kpis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 0 0 18px;
+    }
+    .kpi {
+      border: 1px solid var(--rule);
+      border-left: 6px solid var(--navy);
+      padding: 14px 16px;
+      background: #eef4fb;
+    }
+    .kpi.teal { border-left-color: var(--sw); background: #f0fdfa; }
+    .kpi b {
+      display: block;
+      font-size: 28px;
+      font-weight: 600;
+      color: var(--navy);
+      line-height: 1.1;
+    }
+    .kpi.teal b { color: var(--sw); }
+    .kpi span {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    h2 {
+      margin: 28px 0 10px;
+      padding: 8px 0 8px 12px;
+      border-top: 1px solid var(--rule);
+      border-left: 5px solid var(--navy-2);
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--navy-2);
+    }
+    h2.sw { color: var(--sw); border-left-color: var(--sw); }
+    h2.dv { color: var(--dv); border-left-color: var(--dv); }
+    h2.ai { color: var(--ai); border-left-color: var(--ai); }
+    h2:first-of-type { margin-top: 4px; padding-top: 8px; border-top: 0; }
+    h2.na { color: var(--na); border-left-color: var(--na); }
+    .tag {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .tag.sw { background: #ccfbf1; color: #115e59; }
+    .tag.dv { background: #e0e7ff; color: #3730a3; }
+    .tag.ai { background: #ffedd5; color: #9a3412; }
+    .tag.na { background: #dcfce7; color: #166534; }
+    p.lead { margin: 0 0 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td {
+      border-bottom: 1px solid var(--rule);
+      padding: 9px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      background: var(--navy);
+      color: #fff;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      border-bottom: 0;
+    }
+    th.num, td.num { text-align: right; white-space: nowrap; width: 1%; }
+    td.res { width: 18%; }
+    td.state { width: 1%; white-space: nowrap; }
+    td.st { width: 28%; }
+    .res-note { font-weight: 400; }
+    tbody tr:nth-child(even) { background: var(--wash); }
+    tbody tr.total { background: #dbeafe; font-weight: 600; }
+    tbody tr.total td { border-bottom: 0; }
+    table.family { border-top: 4px solid var(--navy); }
+    table.sw { border-top-color: var(--sw); }
+    table.dv { border-top-color: var(--dv); }
+    table.ai { border-top-color: var(--ai); }
+    table.na { border-top-color: var(--na); }
+    table.sw th { background: var(--sw); }
+    table.dv th { background: var(--dv); }
+    table.ai th { background: var(--ai); }
+    table.na th { background: var(--na); }
+    tbody tr.row-sw { background: #f0fdfa; }
+    tbody tr.row-dv { background: #eef2ff; }
+    tbody tr.row-ai { background: #fff7ed; }
+    tbody tr.row-na { background: #f0fdf4; }
+    tr.row-sw td:first-child { box-shadow: inset 5px 0 0 var(--sw); }
+    tr.row-dv td:first-child { box-shadow: inset 5px 0 0 var(--dv); }
+    tr.row-ai td:first-child { box-shadow: inset 5px 0 0 var(--ai); }
+    tr.row-na td:first-child { box-shadow: inset 5px 0 0 var(--na); }
+    tbody tr:not(.sub) td:first-child { font-weight: 600; }
+    tr.total td:first-child { font-weight: 600; }
+    .sub-name { padding-left: 22px; color: var(--muted); font-weight: 400; }
+    button.count-btn {
+      border: 0;
+      padding: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+      text-decoration: underline;
+    }
+    th .count-btn, tr.total .count-btn { color: inherit; }
+    .empty { color: var(--muted); }
+    .shared-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 39, 64, 0.45);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 48px 16px;
+    }
+    .shared-backdrop[hidden] { display: none; }
+    .sheet {
+      width: min(720px, 100%);
+      max-height: calc(100vh - 96px);
+      overflow: auto;
+      background: #fff;
+      border: 1px solid var(--rule);
+    }
+    .sheet > header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      background: var(--navy);
+      color: #fff;
+      padding: 16px 20px;
+      border-bottom: 4px solid var(--gold);
+    }
+    .sheet h2 {
+      margin: 0;
+      padding: 0;
+      border: 0;
+      color: #fff;
+      font-size: 18px;
+      letter-spacing: 0;
+      text-transform: none;
+    }
+    button.shared-close {
+      background: transparent;
+      color: #fff;
+      border: 1px solid rgba(255, 255, 255, 0.55);
+      padding: 6px 12px;
+      cursor: pointer;
+      font: inherit;
+    }
+    .shared-person { padding: 4px 20px 8px; }
+    .shared-person h3 { margin: 16px 0 8px; font-size: 16px; }
+    @media (max-width: 720px) {
+      .page { margin: 0; border: 0; }
+      .page > header, .body { padding: 20px; }
+      .kpis { grid-template-columns: 1fr; }
+      button.print { position: static; display: inline-block; margin-top: 12px; }
+    }
+    @media print {
+      body { background: #fff; }
+      .page { margin: 0; border: 0; }
+      .page > header, th, .kpi, .tag, tbody tr {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+      h2 { break-after: avoid; }
+      table { break-inside: avoid; }
+      button.print, .shared-backdrop { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <button class="print" type="button" onclick="window.print()">Print</button>
+      <p>PM Tool · Management briefing</p>
+      <h1>Project report</h1>
+      <p class="sub">${escapeHtml(filterLabel)}. Generated ${escapeHtml(generated)}.</p>
+    </header>
+    <div class="body">
+      <div class="kpis">
+        <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
+        <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
+      </div>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names, projects, and utilization.</p>
+      ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
+      ${sections}
+    </div>
+  </div>
+  <div id="shared-dialog" class="shared-backdrop" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="shared-title">
+      <header>
+        <h2 id="shared-title">Shared resources</h2>
+        <button class="shared-close" type="button">Close</button>
+      </header>
+      <div id="shared-body"></div>
+    </div>
+  </div>
+  <script id="shared-data" type="application/json">${listJson}</script>
+  <script>
+    const listData = JSON.parse(document.getElementById("shared-data").textContent);
+    const dialog = document.getElementById("shared-dialog");
+    const title = document.getElementById("shared-title");
+    const body = document.getElementById("shared-body");
+    function projectLabel(assignment) {
+      const name = assignment.parent_name ? assignment.parent_name + " / " + assignment.project_name : assignment.project_name;
+      return assignment.group_name ? assignment.group_name + " · " + name : name;
+    }
+    function openList(kind, key, label) {
+      const bucket = kind === "resources" ? listData.resources : listData.shared;
+      const people = (bucket && bucket[key]) || [];
+      const headings = {
+        resources: "Resources — ",
+        shared: "Shared resources — ",
+        "group-shared": "Shared with other groups — ",
+      };
+      title.textContent = (headings[kind] || "") + label;
+      body.replaceChildren();
+      for (const person of people) {
+        const section = document.createElement("section");
+        section.className = "shared-person";
+        const heading = document.createElement("h3");
+        heading.textContent = person.name;
+        const table = document.createElement("table");
+        table.innerHTML = "<thead><tr><th>Project</th><th>Utilization</th></tr></thead>";
+        const tbody = document.createElement("tbody");
+        for (const assignment of person.assignments) {
+          const row = document.createElement("tr");
+          const projectCell = document.createElement("td");
+          projectCell.textContent = projectLabel(assignment);
+          const utilizationCell = document.createElement("td");
+          utilizationCell.className = "num";
+          utilizationCell.textContent = assignment.utilization_percent + "%";
+          row.append(projectCell, utilizationCell);
+          tbody.append(row);
+        }
+        table.append(tbody);
+        section.append(heading, table);
+        body.append(section);
+      }
+      dialog.hidden = false;
+    }
+    document.body.addEventListener("click", (event) => {
+      const button = event.target.closest(".count-btn");
+      if (button) {
+        event.preventDefault();
+        openList(button.dataset.kind, button.dataset.key, button.dataset.label);
+        return;
+      }
+      if (event.target.closest(".shared-close") || event.target === dialog) {
+        dialog.hidden = true;
+      }
+    });
+  </script>
+</body>
+</html>`;
 }
 
 function GroupMark({
@@ -116,6 +650,8 @@ export function ProjectsPage() {
   const [exportReports, setExportReports] = useState("3");
   const [exportFileName, setExportFileName] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [projectReportLoading, setProjectReportLoading] = useState(false);
+  const [projectReportHtml, setProjectReportHtml] = useState<string | null>(null);
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
@@ -330,6 +866,29 @@ export function ProjectsPage() {
     return query ? `${groupName} ${query}` : groupName;
   }
 
+  function closeProjectReport() {
+    setProjectReportHtml(null);
+    setProjectReportLoading(false);
+  }
+
+  async function openProjectReport() {
+    setProjectReportHtml(null);
+    setProjectReportLoading(true);
+    setError(null);
+    try {
+      const data = await projectReport({
+        q: search.trim() || undefined,
+        group_id: groupFilter || undefined,
+      });
+      setProjectReportHtml(buildProjectReportHtml(data.groups, `Filter: ${exportFilterLabel()}`));
+    } catch (err) {
+      setProjectReportLoading(false);
+      setError(err instanceof Error ? err.message : "Failed to load the report");
+    } finally {
+      setProjectReportLoading(false);
+    }
+  }
+
   function openExport() {
     setExportReports("3");
     setExportFileName(projectsExportFilename(exportFilterLabel()));
@@ -451,6 +1010,14 @@ export function ProjectsPage() {
               </option>
             ))}
           </select>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={loading || projectReportLoading}
+            onClick={() => void openProjectReport()}
+          >
+            Report
+          </button>
           <button
             type="button"
             className="btn btn--secondary"
@@ -577,6 +1144,20 @@ export function ProjectsPage() {
         )}
         <p className="muted list-footer">{total} root project(s)</p>
       </section>
+
+      {(projectReportLoading || projectReportHtml) && (
+        <div className="html-report">
+          <div className="html-report__bar">
+            <button type="button" className="btn btn--secondary" onClick={closeProjectReport}>
+              Close
+            </button>
+          </div>
+          {projectReportLoading && <p className="html-report__status">Loading…</p>}
+          {projectReportHtml && (
+            <iframe className="html-report__frame" title="Project report" srcDoc={projectReportHtml} />
+          )}
+        </div>
+      )}
 
       {exportOpen && (
         <div className="modal-backdrop" onClick={() => setExportOpen(false)} role="presentation">

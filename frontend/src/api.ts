@@ -25,7 +25,11 @@ export function projectRoleLabel(code: ProjectRole): string {
   return PROJECT_ROLES.find((role) => role.code === code)?.label ?? code;
 }
 
-export type ProjectStatus = "assessment" | "in_progress" | "closing" | "completed";
+export type ProjectStatus =
+  | "assessment"
+  | "in_progress"
+  | "closing"
+  | "completed";
 
 export const PROJECT_STATUSES: { code: ProjectStatus; label: string }[] = [
   { code: "assessment", label: "Assessment" },
@@ -164,7 +168,10 @@ export function createResource(data: ResourceInput): Promise<Resource> {
   });
 }
 
-export function updateResource(id: number, data: ResourceInput): Promise<Resource> {
+export function updateResource(
+  id: number,
+  data: ResourceInput,
+): Promise<Resource> {
   return request(`/api/resources/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -206,6 +213,7 @@ export interface SubProjectSummary {
   description: string | null;
   status: ProjectStatus;
   resource_count: number;
+  shared_count?: number;
 }
 
 export interface DuplicateResource {
@@ -265,7 +273,9 @@ export function listGroups(): Promise<GroupItem[]> {
   return request("/api/groups");
 }
 
-export function groupIconSrc(iconUrl: string | null | undefined): string | null {
+export function groupIconSrc(
+  iconUrl: string | null | undefined,
+): string | null {
   if (!iconUrl) return null;
   return `${API_BASE}${iconUrl}`;
 }
@@ -278,7 +288,10 @@ export function updateGroup(groupId: number, name: string): Promise<GroupItem> {
   });
 }
 
-export async function uploadGroupIcon(groupId: number, file: File): Promise<GroupItem> {
+export async function uploadGroupIcon(
+  groupId: number,
+  file: File,
+): Promise<GroupItem> {
   const form = new FormData();
   form.append("file", file);
   const response = await fetch(`${API_BASE}/api/groups/${groupId}/icon`, {
@@ -291,11 +304,17 @@ export async function uploadGroupIcon(groupId: number, file: File): Promise<Grou
   return response.json();
 }
 
-export function projectsExportFilename(filterLabel: string, now = new Date()): string {
+export function projectsExportFilename(
+  filterLabel: string,
+  now = new Date(),
+): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
   const safe =
-    filterLabel.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim() || "all groups";
+    filterLabel
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "all groups";
   return `projects ${stamp} ${safe}.jsonl`;
 }
 
@@ -324,12 +343,72 @@ export async function downloadProjectsExport(params: {
   URL.revokeObjectURL(url);
 }
 
+export interface ReportAssignment {
+  project_id: number;
+  project_name: string;
+  parent_name: string | null;
+  group_name?: string | null;
+  utilization_percent: number;
+}
+
+export interface ReportSharedResource {
+  id: number;
+  name: string;
+  assignments: ReportAssignment[];
+}
+
+export interface ReportSubProject {
+  id: number;
+  name: string;
+  description: string | null;
+  status: ProjectStatus;
+  latest_status: string | null;
+  resource_count: number;
+  resources: ReportSharedResource[];
+  shared_resources: ReportSharedResource[];
+}
+
+export interface ReportGroup {
+  id: number | null;
+  name: string;
+  project_count: number;
+  resource_count: number;
+  resources: ReportSharedResource[];
+  shared_with_other_groups: ReportSharedResource[];
+  projects: ReportProject[];
+}
+
+export interface ReportProject {
+  id: number;
+  name: string;
+  description: string | null;
+  group_name: string | null;
+  status: ProjectStatus;
+  latest_status: string | null;
+  resource_count: number;
+  resources: ReportSharedResource[];
+  shared_resources: ReportSharedResource[];
+  sub_projects: ReportSubProject[];
+}
+
+export function projectReport(params?: {
+  q?: string;
+  group_id?: number;
+}): Promise<{ groups: ReportGroup[] }> {
+  const search = new URLSearchParams();
+  if (params?.q) search.set("q", params.q);
+  if (params?.group_id) search.set("group_id", String(params.group_id));
+  const query = search.toString();
+  return request(`/api/projects/report${query ? `?${query}` : ""}`);
+}
+
 export function listProjects(params?: {
   q?: string;
   group_id?: number;
   roots_only?: boolean;
   parent_id?: number;
   limit?: number;
+  offset?: number;
 }): Promise<{ items: ProjectSummary[]; total: number }> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
@@ -337,6 +416,7 @@ export function listProjects(params?: {
   if (params?.roots_only) search.set("roots_only", "true");
   if (params?.parent_id) search.set("parent_id", String(params.parent_id));
   if (params?.limit) search.set("limit", String(params.limit));
+  if (params?.offset) search.set("offset", String(params.offset));
   const query = search.toString();
   return request(`/api/projects${query ? `?${query}` : ""}`);
 }
@@ -346,7 +426,8 @@ export function getProject(
   recentStatusCount?: number,
 ): Promise<ProjectDetail> {
   const search = new URLSearchParams();
-  if (recentStatusCount) search.set("recent_status_count", String(recentStatusCount));
+  if (recentStatusCount)
+    search.set("recent_status_count", String(recentStatusCount));
   const query = search.toString();
   return request(`/api/projects/${id}${query ? `?${query}` : ""}`);
 }
@@ -364,7 +445,10 @@ export function createRootProject(data: {
   });
 }
 
-export function moveSubProject(id: number, parentId: number): Promise<ProjectSummary> {
+export function moveSubProject(
+  id: number,
+  parentId: number,
+): Promise<ProjectSummary> {
   return request(`/api/projects/${id}/move`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -476,7 +560,9 @@ export function listStatusReports(
   if (limit) search.set("limit", String(limit));
   if (offset) search.set("offset", String(offset));
   const query = search.toString();
-  return request(`/api/projects/${projectId}/status-reports${query ? `?${query}` : ""}`);
+  return request(
+    `/api/projects/${projectId}/status-reports${query ? `?${query}` : ""}`,
+  );
 }
 
 export function createStatusReport(
@@ -506,7 +592,10 @@ export function updateStatusReport(
   });
 }
 
-export function deleteStatusReport(projectId: number, reportId: number): Promise<void> {
+export function deleteStatusReport(
+  projectId: number,
+  reportId: number,
+): Promise<void> {
   return request(`/api/projects/${projectId}/status-reports/${reportId}`, {
     method: "DELETE",
   });

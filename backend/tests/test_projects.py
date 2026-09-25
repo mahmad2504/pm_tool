@@ -543,3 +543,44 @@ def test_roots_are_ordered_by_last_activity(client):
     older_item = next(item for item in listed["items"] if item["id"] == older["id"])
     newer_item = next(item for item in listed["items"] if item["id"] == newer["id"])
     assert older_item["updated_at"] >= newer_item["updated_at"]
+
+
+def test_project_report_includes_description_and_latest_status(client):
+    root = create_root(
+        client, name="Agilex demo", description="Sensor bridge", group_name="Physical AI"
+    ).json()
+    sub = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Driver", "description": "Unassigned software"},
+    ).json()
+    assert (
+        client.post(
+            f"/api/projects/{root['id']}/status-reports",
+            json={"body": "Earlier note"},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{root['id']}/status-reports",
+            json={"body": "Goal achieved — cleanup in progress."},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            f"/api/projects/{sub['id']}/status-reports",
+            json={"body": "Software resource still unassigned."},
+        ).status_code
+        == 201
+    )
+
+    report = client.get("/api/projects/report")
+    assert report.status_code == 200
+    groups = report.json()["groups"]
+    assert [group["name"] for group in groups] == ["Physical AI"]
+    project = groups[0]["projects"][0]
+    assert project["description"] == "Sensor bridge"
+    assert project["latest_status"] == "Goal achieved — cleanup in progress."
+    assert project["sub_projects"][0]["description"] == "Unassigned software"
+    assert project["sub_projects"][0]["latest_status"] == "Software resource still unassigned."

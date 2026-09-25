@@ -17,6 +17,12 @@ from app.schemas.projects import (
     ProjectExportSubProject,
     ProjectListResponse,
     ProjectMove,
+    ProjectReportResponse,
+    ReportAssignment,
+    ReportGroup,
+    ReportProject,
+    ReportSharedResource,
+    ReportSubProject,
     ProjectPatch,
     ProjectResourceAttach,
     ProjectResourceUpdate,
@@ -87,9 +93,34 @@ def _resource_counts(db: Session, project_ids: list[int]) -> dict[int, int]:
     return counts
 
 
-def _sub_project_summaries(db: Session, children: list[Project]) -> list[SubProjectSummary]:
+def _shared_counts(
+    db: Session, project_ids: list[int], shared_resource_ids: set[int]
+) -> dict[int, int]:
+    counts = {project_id: 0 for project_id in project_ids}
+    if not project_ids or not shared_resource_ids:
+        return counts
+    rows = db.execute(
+        select(ProjectResource.project_id, func.count())
+        .where(
+            ProjectResource.project_id.in_(project_ids),
+            ProjectResource.resource_id.in_(shared_resource_ids),
+        )
+        .group_by(ProjectResource.project_id)
+    ).all()
+    for project_id, count in rows:
+        counts[project_id] = int(count)
+    return counts
+
+
+def _sub_project_summaries(
+    db: Session,
+    children: list[Project],
+    shared_resource_ids: set[int] | None = None,
+) -> list[SubProjectSummary]:
     ordered = sorted(children, key=lambda child: (child.name.lower(), child.id))
-    counts = _resource_counts(db, [child.id for child in ordered])
+    ids = [child.id for child in ordered]
+    counts = _resource_counts(db, ids)
+    shared = _shared_counts(db, ids, shared_resource_ids or set())
     return [
         SubProjectSummary(
             id=child.id,
@@ -97,6 +128,7 @@ def _sub_project_summaries(db: Session, children: list[Project]) -> list[SubProj
             description=child.description,
             status=ProjectLifecycle(child.status),
             resource_count=counts[child.id],
+            shared_count=shared[child.id],
         )
         for child in ordered
     ]
@@ -174,11 +206,39 @@ def _to_summary(
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
-        sub_projects=_sub_project_summaries(db, children),
+        sub_projects=_sub_project_summaries(
+            db, children, {item.id for item in duplicate_resources}
+        ),
         duplicate_resources=duplicate_resources,
         created_at=project.created_at,
         updated_at=last_activity_at(db, project, children),
     )
+
+
+def _latest_status_bodies(db: Session, project_ids: list[int]) -> dict[int, str]:
+    if not project_ids:
+        return {}
+    ranked = (
+        select(
+            ProjectStatusReport.project_id,
+            ProjectStatusReport.body,
+            func.row_number()
+            .over(
+                partition_by=ProjectStatusReport.project_id,
+                order_by=(
+                    ProjectStatusReport.created_at.desc(),
+                    ProjectStatusReport.id.desc(),
+                ),
+            )
+            .label("status_rank"),
+        )
+        .where(ProjectStatusReport.project_id.in_(project_ids))
+        .subquery()
+    )
+    rows = db.execute(
+        select(ranked.c.project_id, ranked.c.body).where(ranked.c.status_rank == 1)
+    ).all()
+    return {int(project_id): body for project_id, body in rows}
 
 
 def _recent_reports(db: Session, project_id: int, limit: int) -> list[ProjectStatusReport]:
@@ -323,6 +383,185 @@ def export_projects(
         media_type="application/jsonl",
         headers={"Content-Disposition": 'attachment; filename="projects.jsonl"'},
     )
+
+
+def _listed_people(
+    member_ids: set[int],
+    shown_project_ids: set[int] | None,
+    people: dict[int, tuple[str, list[ReportAssignment]]],
+    *,
+    outside_home_ids: set[int] | None = None,
+    other_group_name: str | None = None,
+) -> list[ReportSharedResource]:
+    listed: list[ReportSharedResource] = []
+    for resource_id in member_ids:
+        name, assignments = people[resource_id]
+        if outside_home_ids is not None and all(
+            item.project_id in outside_home_ids for item in assignments
+        ):
+            continue
+        if other_group_name is not None and all(
+            (item.group_name or "No group") == other_group_name for item in assignments
+        ):
+            continue
+        shown = (
+            assignments
+            if shown_project_ids is None
+            else [item for item in assignments if item.project_id in shown_project_ids]
+        )
+        listed.append(ReportSharedResource(id=resource_id, name=name, assignments=shown))
+    listed.sort(key=lambda item: item.name.lower())
+    return listed
+
+
+@router.get("/report", response_model=ProjectReportResponse)
+def project_report(
+    db: DbSession,
+    q: str | None = None,
+    group_id: int | None = None,
+) -> ProjectReportResponse:
+    """Root projects for the current filter, with people who are also on another project."""
+    roots = db.scalars(
+        _filtered_projects(q=q, group_id=group_id, roots_only=True).order_by(
+            latest_activity_order().desc(), Project.id.desc()
+        )
+    ).all()
+    root_ids = [project.id for project in roots]
+    children_by_parent: dict[int, list[Project]] = {project_id: [] for project_id in root_ids}
+    if root_ids:
+        for child in db.scalars(select(Project).where(Project.parent_id.in_(root_ids))).all():
+            if child.parent_id is not None:
+                children_by_parent.setdefault(child.parent_id, []).append(child)
+    all_ids = [
+        project_id
+        for root_id, children in children_by_parent.items()
+        for project_id in (root_id, *(child.id for child in children))
+    ]
+    members: dict[int, set[int]] = {project_id: set() for project_id in all_ids}
+    people: dict[int, tuple[str, list[ReportAssignment]]] = {}
+    if all_ids:
+        resource_ids = list(
+            db.scalars(
+                select(ProjectResource.resource_id)
+                .where(ProjectResource.project_id.in_(all_ids))
+                .distinct()
+            ).all()
+        )
+        if resource_ids:
+            Parent = aliased(Project)
+            RootProject = aliased(Project)
+            rows = db.execute(
+                select(
+                    ProjectResource.resource_id,
+                    Resource.name,
+                    Project.id,
+                    Project.name,
+                    Parent.name,
+                    Group.name,
+                    ProjectResource.utilization_percent,
+                )
+                .join(Resource, Resource.id == ProjectResource.resource_id)
+                .join(Project, Project.id == ProjectResource.project_id)
+                .outerjoin(Parent, Parent.id == Project.parent_id)
+                .outerjoin(RootProject, RootProject.id == Project.root_project_id)
+                .outerjoin(Group, Group.id == RootProject.group_id)
+                .where(ProjectResource.resource_id.in_(resource_ids))
+                .order_by(func.lower(Project.name), Project.id)
+            ).all()
+            for (
+                resource_id,
+                resource_name,
+                project_id,
+                project_name,
+                parent_name,
+                assignment_group,
+                utilization,
+            ) in rows:
+                assignment = ReportAssignment(
+                    project_id=project_id,
+                    project_name=project_name,
+                    parent_name=parent_name,
+                    group_name=assignment_group,
+                    utilization_percent=int(utilization),
+                )
+                name, assignments = people.get(resource_id, (resource_name, []))
+                assignments.append(assignment)
+                people[resource_id] = (name, assignments)
+                if project_id in members:
+                    members[project_id].add(resource_id)
+    latest_status = _latest_status_bodies(db, all_ids)
+    items: list[tuple[tuple[int | None, str], set[int], ReportProject]] = []
+    for root in roots:
+        children = sorted(
+            children_by_parent.get(root.id, []),
+            key=lambda child: (child.name.lower(), child.id),
+        )
+        home_ids = {root.id, *(child.id for child in children)}
+        member_ids = set().union(*(members.get(project_id, set()) for project_id in home_ids))
+        group = effective_group(db, root)
+        group_key = (group.id if group else None, group.name if group else "No group")
+        items.append(
+            (
+                group_key,
+                home_ids,
+                ReportProject(
+                id=root.id,
+                name=root.name,
+                description=root.description,
+                group_name=group.name if group else None,
+                status=ProjectLifecycle(root.status),
+                latest_status=latest_status.get(root.id),
+                resource_count=len(member_ids),
+                resources=_listed_people(member_ids, home_ids, people),
+                shared_resources=_listed_people(
+                    member_ids, None, people, outside_home_ids=home_ids
+                ),
+                sub_projects=[
+                    ReportSubProject(
+                        id=child.id,
+                        name=child.name,
+                        description=child.description,
+                        status=ProjectLifecycle(child.status),
+                        latest_status=latest_status.get(child.id),
+                        resource_count=len(members.get(child.id, set())),
+                        resources=_listed_people(
+                            members.get(child.id, set()), {child.id}, people
+                        ),
+                        shared_resources=_listed_people(
+                            members.get(child.id, set()),
+                            None,
+                            people,
+                            outside_home_ids={child.id},
+                        ),
+                    )
+                    for child in children
+                ],
+            ),
+            )
+        )
+    panels: dict[tuple[int | None, str], list[tuple[set[int], ReportProject]]] = {}
+    for group_key, home_ids, project in items:
+        panels.setdefault(group_key, []).append((home_ids, project))
+    groups: list[ReportGroup] = []
+    for group_id, group_name in sorted(panels, key=lambda key: key[1].lower()):
+        entries = panels[(group_id, group_name)]
+        home_ids = set().union(*(entry_ids for entry_ids, _project in entries))
+        member_ids = set().union(*(members.get(project_id, set()) for project_id in home_ids))
+        group_resources = _listed_people(member_ids, home_ids, people)
+        groups.append(
+            ReportGroup(
+                id=group_id,
+                name=group_name,
+                project_count=len(entries),
+                resource_count=len(group_resources),
+                resources=group_resources,
+                shared_with_other_groups=_listed_people(
+                    member_ids, None, people, other_group_name=group_name
+                ),
+                projects=[project for _entry_ids, project in entries],
+            )
+        )
+    return ProjectReportResponse(groups=groups)
 
 
 @router.post("", response_model=ProjectSummary, status_code=status.HTTP_201_CREATED)
