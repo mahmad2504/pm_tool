@@ -281,6 +281,7 @@ class StatusReportCreate(BaseModel):
 
 class StatusReportUpdate(BaseModel):
     body: str = Field(min_length=1)
+    created_at: datetime | None = None
 
     @field_validator("body")
     @classmethod

@@ -365,6 +365,38 @@ def test_status_report_custom_created_at(client):
     assert created.json()["created_at"].startswith("2026-01-15T08:30:00")
 
 
+def test_update_status_report_body_and_created_at(client):
+    root = create_root(client).json()
+    created = client.post(
+        f"/api/projects/{root['id']}/status-reports",
+        json={"body": "Original", "created_at": "2026-01-15T08:30:00Z"},
+    )
+    assert created.status_code == 201
+    report_id = created.json()["id"]
+
+    updated = client.patch(
+        f"/api/projects/{root['id']}/status-reports/{report_id}",
+        json={"body": "  Corrected note  ", "created_at": "2026-02-01T09:00:00Z"},
+    )
+    assert updated.status_code == 200
+    assert updated.json()["body"] == "Corrected note"
+    assert updated.json()["created_at"].startswith("2026-02-01T09:00:00")
+
+    body_only = client.patch(
+        f"/api/projects/{root['id']}/status-reports/{report_id}",
+        json={"body": "Text only"},
+    )
+    assert body_only.status_code == 200
+    assert body_only.json()["body"] == "Text only"
+    assert body_only.json()["created_at"].startswith("2026-02-01T09:00:00")
+
+    blank = client.patch(
+        f"/api/projects/{root['id']}/status-reports/{report_id}",
+        json={"body": "   "},
+    )
+    assert blank.status_code == 422
+
+
 def test_status_reports_limit(client):
     root = create_root(client).json()
     for i in range(3):

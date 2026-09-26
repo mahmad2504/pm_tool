@@ -32,7 +32,11 @@ import { OnboardedIcon } from "../components/OnboardedIcon";
 import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
 import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
-import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
+import {
+  currentDatetimeLocalValue,
+  datetimeLocalToIso,
+  isoToDatetimeLocal,
+} from "../utils/datetimeLocal";
 const REPORT_PAGE_SIZE = 5;
 
 const PROJECT_ROLE_LIST_RANK: Partial<Record<ProjectRole, number>> = {
@@ -140,6 +144,11 @@ export function ProjectDetailPage() {
   });
   const [reportPage, setReportPage] = useState(0);
   const [openReport, setOpenReport] = useState<StatusReport | null>(null);
+  const [editingReport, setEditingReport] = useState<StatusReport | null>(null);
+  const [editReportBody, setEditReportBody] = useState("");
+  const [editReportAt, setEditReportAt] = useState("");
+  const [editReportSaving, setEditReportSaving] = useState(false);
+  const [editReportError, setEditReportError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editMeta, setEditMeta] = useState({
     name: "",
@@ -331,6 +340,37 @@ export function ProjectDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to remove resource");
+    }
+  }
+
+  function beginEditReport(report: StatusReport) {
+    setOpenReport(null);
+    setEditingReport(report);
+    setEditReportBody(report.body);
+    setEditReportAt(isoToDatetimeLocal(report.created_at));
+    setEditReportError(null);
+  }
+
+  async function saveEditedReport(event: FormEvent) {
+    event.preventDefault();
+    if (!project || !editingReport) return;
+    const body = editReportBody.trim();
+    if (!body || !editReportAt) return;
+    setEditReportSaving(true);
+    setEditReportError(null);
+    try {
+      await updateStatusReport(
+        project.id,
+        editingReport.id,
+        body,
+        datetimeLocalToIso(editReportAt),
+      );
+      setEditingReport(null);
+      await load();
+    } catch (err) {
+      setEditReportError(err instanceof Error ? err.message : "Failed to update report");
+    } finally {
+      setEditReportSaving(false);
     }
   }
 
@@ -658,12 +698,7 @@ export function ProjectDetailPage() {
                   <button
                     type="button"
                     className="btn btn--ghost btn--sm"
-                    onClick={() => {
-                      const next = window.prompt("Edit report", rep.body);
-                      if (next && next.trim()) {
-                        void updateStatusReport(project.id, rep.id, next.trim()).then(load);
-                      }
-                    }}
+                    onClick={() => beginEditReport(rep)}
                   >
                     Edit
                   </button>
@@ -734,7 +769,7 @@ export function ProjectDetailPage() {
       {openReport && (
         <div className="modal-backdrop" onClick={() => setOpenReport(null)} role="presentation">
           <div
-            className="modal"
+            className="modal modal--report"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -752,6 +787,84 @@ export function ProjectDetailPage() {
               </time>
             </p>
             <pre className="report-full">{openReport.body}</pre>
+            <footer className="modal__footer">
+              <button type="button" className="btn btn--ghost" onClick={() => setOpenReport(null)}>
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn--secondary"
+                onClick={() => beginEditReport(openReport)}
+              >
+                Edit
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
+
+      {editingReport && (
+        <div className="modal-backdrop" onClick={() => setEditingReport(null)} role="presentation">
+          <div
+            className="modal modal--report"
+            onClick={(event) => event.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-status-report-title"
+          >
+            <header className="modal__header">
+              <h2 id="edit-status-report-title">Edit status report</h2>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Close"
+                onClick={() => setEditingReport(null)}
+              >
+                ×
+              </button>
+            </header>
+            <form className="modal__form" onSubmit={(event) => void saveEditedReport(event)}>
+              {editReportError && (
+                <p className="modal__error" role="alert">
+                  {editReportError}
+                </p>
+              )}
+              <label>
+                Report
+                <textarea
+                  required
+                  rows={8}
+                  autoFocus
+                  value={editReportBody}
+                  onChange={(event) => setEditReportBody(event.target.value)}
+                />
+              </label>
+              <label>
+                Reported at
+                <input
+                  type="datetime-local"
+                  required
+                  value={editReportAt}
+                  onChange={(event) => setEditReportAt(event.target.value)}
+                />
+              </label>
+              <footer className="modal__footer">
+                <button
+                  type="button"
+                  className="btn btn--ghost"
+                  onClick={() => setEditingReport(null)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn--primary"
+                  disabled={editReportSaving || !editReportBody.trim() || !editReportAt}
+                >
+                  {editReportSaving ? "Saving…" : "Save"}
+                </button>
+              </footer>
+            </form>
           </div>
         </div>
       )}

@@ -862,6 +862,8 @@ def update_status_report(
     if report is None or report.project_id != project_id:
         raise HTTPException(status_code=404, detail="Status report not found")
     report.body = payload.body
+    if payload.created_at is not None:
+        report.created_at = payload.created_at
     report.updated_at = utc_now()
     touch_project(db, project)
     db.commit()

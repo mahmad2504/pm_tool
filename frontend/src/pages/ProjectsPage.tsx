@@ -13,7 +13,9 @@ import {
   ProjectStatus,
   createRootProject,
   createStatusReport,
+  downloadHtmlFile,
   downloadProjectsExport,
+  portfolioReportFilename,
   projectsExportFilename,
   getProject,
   groupIconSrc,
@@ -30,7 +32,11 @@ import { OnboardedIcon } from "../components/OnboardedIcon";
 import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
 import { PeopleNameHover, SubProjectPeopleHint } from "../components/SubProjectPeopleHint";
 import { AppShell } from "../layout/AppShell";
-import { currentDatetimeLocalValue, datetimeLocalToIso } from "../utils/datetimeLocal";
+import {
+  currentDatetimeLocalValue,
+  datetimeLocalToIso,
+  isoToDatetimeLocal,
+} from "../utils/datetimeLocal";
 
 function formatUpdated(value: string): string {
   return new Date(value).toLocaleString(undefined, {
@@ -155,6 +161,8 @@ function staleStatusMark(reportedAt: string): string {
   return `<span class="status-stale" title="${label}"><svg viewBox="0 0 24 24" aria-label="${label}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>`;
 }
 
+const REPORT_PREVIEW_MAX_CHARS = 120;
+
 function textThroughFirstBlank(value: string): { preview: string; hasMore: boolean } {
   const normalized = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   const breakAt = normalized.search(/\n[ \t]*\n/);
@@ -165,6 +173,16 @@ function textThroughFirstBlank(value: string): { preview: string; hasMore: boole
   return { preview, hasMore: true };
 }
 
+function shortenToLength(text: string, maxChars: number): { text: string; shortened: boolean } {
+  if (text.length <= maxChars) return { text, shortened: false };
+  const window = text.slice(0, maxChars);
+  const lastBreak = Math.max(window.lastIndexOf(" "), window.lastIndexOf("\n"));
+  const cutAt = lastBreak >= Math.floor(maxChars * 0.5) ? lastBreak : maxChars;
+  const trimmed = window.slice(0, cutAt).replace(/[\s.,;:!?]+$/g, "").trimEnd();
+  const preview = trimmed || window.trimEnd();
+  return { text: `${preview}...`, shortened: true };
+}
+
 function clippedTextCell(
   raw: string,
   textKey: string,
@@ -172,19 +190,16 @@ function clippedTextCell(
   store: Record<string, string>,
   linkText: string,
   kind: "status" | "description",
+  maxChars?: number,
 ): string {
-  const { preview, hasMore } = textThroughFirstBlank(raw);
+  const throughBlank = textThroughFirstBlank(raw);
+  const limited = maxChars ? shortenToLength(throughBlank.preview, maxChars) : { text: throughBlank.preview, shortened: false };
+  const preview = limited.text;
+  const hasMore = throughBlank.hasMore || limited.shortened;
   if (!hasMore) return textBlock(preview);
   store[textKey] = raw;
   const button = `<button type="button" class="status-more" data-text-kind="${kind}" data-status-key="${escapeHtml(textKey)}" data-label="${escapeHtml(label)}">${escapeHtml(linkText)}</button>`;
-  const lines = textBlock(preview).split("<br>");
-  const lastLine = lines.pop() ?? "";
-  const earlier = lines.length ? `${lines.join("<br>")}<br>` : "";
-  const tail = lastLine.match(/^(.*?)(\S+)\s*$/);
-  const screen = tail
-    ? `${earlier}${tail[1]}<span class="status-tail">${tail[2]} ${button}</span>`
-    : `${earlier}<span class="status-tail">${lastLine} ${button}</span>`;
-  return `<span class="status-screen">${screen}</span><span class="status-full-print">${textBlock(raw)}</span>`;
+  return `<span class="status-screen">${textBlock(preview)} ${button}</span><span class="status-full-print">${textBlock(raw)}</span>`;
 }
 
 function descriptionCell(
@@ -195,7 +210,15 @@ function descriptionCell(
 ): string {
   const raw = body?.trim();
   if (!raw) return "Not available.";
-  return clippedTextCell(raw, textKey, label, descriptions, "See complete description", "description");
+  return clippedTextCell(
+    raw,
+    textKey,
+    label,
+    descriptions,
+    "See complete description",
+    "description",
+    REPORT_PREVIEW_MAX_CHARS,
+  );
 }
 
 function statusCell(
@@ -208,7 +231,7 @@ function statusCell(
   const raw = body?.trim();
   if (!raw) return "";
   const stale = statusReportIsStale(reportedAt) ? staleStatusMark(reportedAt as string) : "";
-  return `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status")}`;
+  return `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS)}`;
 }
 
 function outsideProjectLabels(people: ReportSharedResource[], groupName: string): string[] {
@@ -524,9 +547,9 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
       color: #b42318;
     }
     .status-stale svg { display: block; width: 16px; height: 16px; }
-    .status-tail { white-space: nowrap; }
     button.status-more {
       display: inline;
+      white-space: nowrap;
       margin: 0;
       border: 0;
       padding: 0;
@@ -692,7 +715,7 @@ function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): str
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. Description and status show through the first blank line. Select See complete description or See complete status when the text continues. A red mark in Status means the last status report is more than a week old.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or See complete status. Select See complete description or See complete status when the text continues. A red mark in Status means the last status report is more than a week old.</p>
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
@@ -878,6 +901,7 @@ export function ProjectsPage() {
   const [reportTarget, setReportTarget] = useState<ProjectSummary | null>(null);
   const [latestReport, setLatestReport] = useState<StatusReport | null>(null);
   const [reportBody, setReportBody] = useState("");
+  const [reportAt, setReportAt] = useState(currentDatetimeLocalValue);
   const [newReportBody, setNewReportBody] = useState("");
   const [newReportAt, setNewReportAt] = useState(currentDatetimeLocalValue);
   const [reportLoading, setReportLoading] = useState(false);
@@ -903,6 +927,7 @@ export function ProjectsPage() {
   const [exporting, setExporting] = useState(false);
   const [projectReportLoading, setProjectReportLoading] = useState(false);
   const [projectReportHtml, setProjectReportHtml] = useState<string | null>(null);
+  const [htmlExporting, setHtmlExporting] = useState(false);
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
@@ -987,6 +1012,7 @@ export function ProjectsPage() {
     setReportTarget(project);
     setLatestReport(null);
     setReportBody("");
+    setReportAt(currentDatetimeLocalValue());
     setNewReportBody("");
     setNewReportAt(currentDatetimeLocalValue());
     setReportError(null);
@@ -1000,6 +1026,7 @@ export function ProjectsPage() {
       }
       setLatestReport(latest);
       setReportBody(latest.body);
+      setReportAt(isoToDatetimeLocal(latest.created_at));
     } catch (err) {
       setReportError(err instanceof Error ? err.message : "Failed to load the report");
     } finally {
@@ -1015,7 +1042,12 @@ export function ProjectsPage() {
     setReportSaving(true);
     setReportError(null);
     try {
-      await updateStatusReport(reportTarget.id, latestReport.id, body);
+      await updateStatusReport(
+        reportTarget.id,
+        latestReport.id,
+        body,
+        datetimeLocalToIso(reportAt),
+      );
       setReportTarget(null);
       await load();
     } catch (err) {
@@ -1122,16 +1154,33 @@ export function ProjectsPage() {
     setProjectReportLoading(false);
   }
 
+  async function loadProjectReportHtml(): Promise<string> {
+    const data = await projectReport({
+      q: search.trim() || undefined,
+      group_id: groupFilter || undefined,
+    });
+    return buildProjectReportHtml(data.groups, `Filter: ${exportFilterLabel()}`);
+  }
+
+  async function exportHtmlReport() {
+    setHtmlExporting(true);
+    setError(null);
+    try {
+      const html = projectReportHtml ?? (await loadProjectReportHtml());
+      downloadHtmlFile(html, portfolioReportFilename(exportFilterLabel()));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to export the report");
+    } finally {
+      setHtmlExporting(false);
+    }
+  }
+
   async function openProjectReport() {
     setProjectReportHtml(null);
     setProjectReportLoading(true);
     setError(null);
     try {
-      const data = await projectReport({
-        q: search.trim() || undefined,
-        group_id: groupFilter || undefined,
-      });
-      setProjectReportHtml(buildProjectReportHtml(data.groups, `Filter: ${exportFilterLabel()}`));
+      setProjectReportHtml(await loadProjectReportHtml());
     } catch (err) {
       setProjectReportLoading(false);
       setError(err instanceof Error ? err.message : "Failed to load the report");
@@ -1272,6 +1321,14 @@ export function ProjectsPage() {
           <button
             type="button"
             className="btn btn--secondary"
+            disabled={loading || htmlExporting}
+            onClick={() => void exportHtmlReport()}
+          >
+            {htmlExporting ? "Exporting…" : "Export HTML"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--secondary"
             disabled={loading || exporting}
             onClick={openExport}
           >
@@ -1399,6 +1456,14 @@ export function ProjectsPage() {
       {(projectReportLoading || projectReportHtml) && (
         <div className="html-report">
           <div className="html-report__bar">
+            <button
+              type="button"
+              className="btn btn--primary"
+              disabled={!projectReportHtml || htmlExporting}
+              onClick={() => void exportHtmlReport()}
+            >
+              {htmlExporting ? "Exporting…" : "Export HTML"}
+            </button>
             <button type="button" className="btn btn--secondary" onClick={closeProjectReport}>
               Close
             </button>
@@ -1574,7 +1639,7 @@ export function ProjectsPage() {
       {reportTarget && (
         <div className="modal-backdrop" onClick={() => setReportTarget(null)} role="presentation">
           <div
-            className="modal"
+            className="modal modal--report"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
             aria-modal="true"
@@ -1591,21 +1656,30 @@ export function ProjectsPage() {
             {reportError && <p className="modal__message">{reportError}</p>}
             {!reportLoading && latestReport && (
               <form className="modal__form" onSubmit={(event) => void saveLastReport(event)}>
-                <p className="project-card__updated">
-                  Submitted{" "}
-                  <time dateTime={latestReport.created_at}>{formatUpdated(latestReport.created_at)}</time>
-                </p>
                 <label>
                   Report
                   <textarea
                     required
-                    rows={6}
+                    rows={8}
                     value={reportBody}
                     onChange={(event) => setReportBody(event.target.value)}
                   />
                 </label>
+                <label>
+                  Reported at
+                  <input
+                    type="datetime-local"
+                    required
+                    value={reportAt}
+                    onChange={(event) => setReportAt(event.target.value)}
+                  />
+                </label>
                 <footer className="modal__footer">
-                  <button type="submit" className="btn btn--primary" disabled={reportSaving || !reportBody.trim()}>
+                  <button
+                    type="submit"
+                    className="btn btn--primary"
+                    disabled={reportSaving || !reportBody.trim() || !reportAt}
+                  >
                     {reportSaving ? "Saving…" : "Save"}
                   </button>
                 </footer>

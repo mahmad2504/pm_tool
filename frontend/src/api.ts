@@ -318,6 +318,32 @@ export function projectsExportFilename(
   return `projects ${stamp} ${safe}.jsonl`;
 }
 
+export function portfolioReportFilename(
+  filterLabel: string,
+  now = new Date(),
+): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  const safe =
+    filterLabel
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "all groups";
+  return `portfolio-report ${stamp} ${safe}.html`;
+}
+
+export function downloadHtmlFile(html: string, filename: string): void {
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename.endsWith(".html") ? filename : `${filename}.html`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadProjectsExport(params: {
   q?: string;
   group_id?: number;
@@ -586,11 +612,15 @@ export function updateStatusReport(
   projectId: number,
   reportId: number,
   body: string,
+  createdAt?: string,
 ): Promise<StatusReport> {
   return request(`/api/projects/${projectId}/status-reports/${reportId}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ body }),
+    body: JSON.stringify({
+      body,
+      ...(createdAt ? { created_at: createdAt } : {}),
+    }),
   });
 }
 
