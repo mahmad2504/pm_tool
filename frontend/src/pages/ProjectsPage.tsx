@@ -553,6 +553,13 @@ export function ProjectsPage() {
                       onClick={() => openGroupEditor(p)}
                     />
                   )}
+                  <TagChips
+                    tags={p.tags}
+                    activeId={tagFilter}
+                    onSelect={(tagId) =>
+                      setTagFilter((current) => (current === tagId ? "" : tagId))
+                    }
+                  />
                   <div className="project-card__head-actions">
                     <ProjectStatusSelect
                       status={p.status}
@@ -606,13 +613,6 @@ export function ProjectsPage() {
                 <h3 className="project-card__title">
                   <Link to={`/projects/${p.id}`}>{p.name}</Link>
                 </h3>
-                <TagChips
-                  tags={p.tags}
-                  activeId={tagFilter}
-                  onSelect={(tagId) =>
-                    setTagFilter((current) => (current === tagId ? "" : tagId))
-                  }
-                />
                 {p.sub_projects.length > 0 && (
                   <ul className="project-card__subs">
                     {p.sub_projects.map((sub) => {
