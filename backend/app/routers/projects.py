@@ -338,6 +338,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
         id=project.id,
         name=project.name,
         description=project.description,
+        chat_url=project.chat_url,
         group_id=group.id if group else None,
         group_name=group.name if group else None,
         status=ProjectLifecycle(project.status),
@@ -356,6 +357,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
                 id=child.id,
                 name=child.name,
                 description=child.description,
+                chat_url=child.chat_url,
                 status=ProjectLifecycle(child.status),
                 reports_with_pmo=child.reports_with_pmo,
                 tags=_tag_names(tag_map, child.id),
@@ -732,6 +734,7 @@ def get_project(
         id=project.id,
         name=project.name,
         description=project.description,
+        chat_url=project.chat_url,
         parent_id=project.parent_id,
         parent_name=parent_name,
         root_project_id=root.id,
@@ -790,6 +793,8 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
         project.status = data["status"].value
     if "reports_with_pmo" in data and data["reports_with_pmo"] is not None:
         project.reports_with_pmo = data["reports_with_pmo"]
+    if "chat_url" in data:
+        project.chat_url = data["chat_url"]
     if "tags" in data and data["tags"] is not None:
         set_project_tags(db, project, data["tags"])
 

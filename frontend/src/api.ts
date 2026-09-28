@@ -269,6 +269,7 @@ export interface ProjectDetail {
   id: number;
   name: string;
   description: string | null;
+  chat_url: string | null;
   parent_id: number | null;
   parent_name: string | null;
   root_project_id: number;
@@ -535,6 +536,7 @@ export function patchProject(
     group_name?: string;
     status?: ProjectStatus;
     reports_with_pmo?: boolean;
+    chat_url?: string | null;
     tags?: string[];
   },
 ): Promise<ProjectSummary> {

@@ -79,6 +79,21 @@ def run_sqlite_migrations() -> None:
                         "INTEGER NOT NULL DEFAULT 1"
                     )
                 )
+            if "chat_url" not in project_columns:
+                conn.execute(text("ALTER TABLE projects ADD COLUMN chat_url VARCHAR(2048)"))
+
+
+def ensure_chat_url_column() -> None:
+    if DATABASE_URL.startswith("sqlite"):
+        return
+    inspector = inspect(engine)
+    if "projects" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("projects")}
+    if "chat_url" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE projects ADD COLUMN chat_url VARCHAR(2048) NULL"))
 
 
 def ensure_reports_with_pmo_column() -> None:

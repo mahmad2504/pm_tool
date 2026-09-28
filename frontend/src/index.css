@@ -1508,6 +1508,26 @@ a {
   padding: 0;
 }
 
+.chat-url-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.chat-url-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.chat-url-field input {
+  flex: 1;
+  min-width: 0;
+}
+
 .modal__form input,
 .modal__form select,
 .modal__form textarea {

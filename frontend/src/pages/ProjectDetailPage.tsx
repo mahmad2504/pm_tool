@@ -18,7 +18,6 @@ import {
   deleteStatusReport,
   detachResourceFromProject,
   getProject,
-  groupIconSrc,
   listAllResources,
   listStatusReports,
   listTags,
@@ -40,6 +39,18 @@ import {
   isoToDatetimeLocal,
 } from "../utils/datetimeLocal";
 const REPORT_PAGE_SIZE = 5;
+
+function httpUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
 
 const PROJECT_ROLE_LIST_RANK: Partial<Record<ProjectRole, number>> = {
   director: 0,
@@ -155,6 +166,7 @@ export function ProjectDetailPage() {
   const [editMeta, setEditMeta] = useState({
     name: "",
     description: "",
+    chat_url: "",
     group_name: "",
     status: "assessment" as ProjectStatus,
     reports_with_pmo: true,
@@ -189,6 +201,7 @@ export function ProjectDetailPage() {
       setEditMeta({
         name: detail.name,
         description: detail.description ?? "",
+        chat_url: detail.chat_url ?? "",
         group_name: detail.group_name ?? "",
         status: detail.status,
         reports_with_pmo: detail.reports_with_pmo,
@@ -260,12 +273,14 @@ export function ProjectDetailPage() {
       const payload: {
         name: string;
         description: string | null;
+        chat_url: string | null;
         group_name?: string;
         status: ProjectStatus;
         reports_with_pmo: boolean;
       } = {
         name: editMeta.name.trim(),
         description: editMeta.description.trim() || null,
+        chat_url: editMeta.chat_url.trim() || null,
         status: editMeta.status,
         reports_with_pmo: editMeta.reports_with_pmo,
       };
@@ -453,6 +468,7 @@ export function ProjectDetailPage() {
   }
 
   const assignedIds = new Set(project.resources.map((a) => a.resource.id));
+  const chatHref = httpUrl(editMeta.chat_url);
 
   return (
     <AppShell>
@@ -468,35 +484,6 @@ export function ProjectDetailPage() {
             )}
           </p>
           <h1>{project.name}</h1>
-          <ProjectStatusSelect
-            status={project.status}
-            label={`Status for ${project.name}`}
-            onChange={(status) => void changeStatus(project.id, status)}
-          />
-          <p className="project-card__updated">
-            Last updated{" "}
-            <time dateTime={project.updated_at}>
-              {new Date(project.updated_at).toLocaleString(undefined, {
-                day: "numeric",
-                month: "short",
-                year: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </time>
-          </p>
-          {project.group_name && (
-            <p className="project-group">
-              {groupIconSrc(project.group_icon_url) && (
-                <img
-                  className="group-mark"
-                  src={groupIconSrc(project.group_icon_url) ?? undefined}
-                  alt=""
-                />
-              )}
-              <span className="group-pill">{project.group_name}</span>
-            </p>
-          )}
           {!project.is_root && (
             <p className="subtitle">
               Sub-project · root:{" "}
@@ -580,6 +567,30 @@ export function ProjectDetailPage() {
               onChange={(e) => setEditMeta({ ...editMeta, description: e.target.value })}
             />
           </label>
+          <div className="chat-url-block">
+            <label htmlFor="project-chat-url">Chat URL</label>
+            <span className="chat-url-field">
+              <input
+                id="project-chat-url"
+                type="url"
+                inputMode="url"
+                placeholder="https://teams.microsoft.com/l/chat/…"
+                value={editMeta.chat_url}
+                onChange={(e) => setEditMeta({ ...editMeta, chat_url: e.target.value })}
+              />
+              {chatHref && (
+                <a
+                  className="btn btn--secondary btn--sm"
+                  href={chatHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open
+                </a>
+              )}
+            </span>
+          </div>
+          <p className="muted">Paste a Teams or other chat link. Leave blank to clear it.</p>
           <button type="submit" className="btn btn--primary">
             Save details
           </button>

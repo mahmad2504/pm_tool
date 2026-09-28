@@ -703,6 +703,42 @@ def test_reports_with_pmo_is_independent_per_row(client):
     assert row["sub_projects"][0]["reports_with_pmo"] is False
 
 
+def test_project_chat_url_can_be_set_and_cleared(client):
+    import json
+
+    root = create_root(client, name="Chat home", group_name="Platform").json()
+    sub = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Chat child"},
+    ).json()
+    teams = "https://teams.microsoft.com/l/chat/19:abc/0?tenantId=1"
+
+    missing = client.get(f"/api/projects/{root['id']}")
+    assert missing.json()["chat_url"] is None
+
+    saved = client.patch(f"/api/projects/{root['id']}", json={"chat_url": f"  {teams}  "})
+    assert saved.status_code == 200
+    assert client.get(f"/api/projects/{root['id']}").json()["chat_url"] == teams
+
+    child = client.patch(f"/api/projects/{sub['id']}", json={"chat_url": teams})
+    assert child.status_code == 200
+    assert client.get(f"/api/projects/{sub['id']}").json()["chat_url"] == teams
+
+    invalid = client.patch(f"/api/projects/{root['id']}", json={"chat_url": "not a link"})
+    assert invalid.status_code == 422
+    assert client.get(f"/api/projects/{root['id']}").json()["chat_url"] == teams
+
+    cleared = client.patch(f"/api/projects/{root['id']}", json={"chat_url": "   "})
+    assert cleared.status_code == 200
+    assert client.get(f"/api/projects/{root['id']}").json()["chat_url"] is None
+
+    exported = client.get("/api/projects/export", params={"q": "Chat home", "reports": 0})
+    assert exported.status_code == 200
+    row = next(json.loads(line) for line in exported.text.splitlines() if line.strip())
+    assert row["chat_url"] is None
+    assert row["sub_projects"][0]["chat_url"] == teams
+
+
 def test_root_without_children_includes_latest_report_at(client):
     root = create_root(client, name="Standalone", group_name="Platform").json()
     listed = client.get("/api/projects", params={"roots_only": True, "q": "Standalone"}).json()

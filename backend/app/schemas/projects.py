@@ -1,4 +1,5 @@
 from datetime import datetime
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -12,6 +13,18 @@ def trim_optional_description(value: str | None) -> str | None:
         return None
     stripped = value.strip()
     return stripped if stripped else None
+
+
+def trim_optional_url(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    parsed = urlparse(stripped)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        raise ValueError("Chat URL must start with http:// or https://")
+    return stripped
 
 
 class TagRef(BaseModel):
@@ -119,6 +132,7 @@ class ProjectPatch(BaseModel):
     group_name: str | None = Field(default=None, max_length=255)
     status: ProjectLifecycle | None = None
     reports_with_pmo: bool | None = None
+    chat_url: str | None = Field(default=None, max_length=2048)
     tags: list[str] | None = None
 
     @field_validator("name")
@@ -145,6 +159,11 @@ class ProjectPatch(BaseModel):
     @classmethod
     def trim_description(cls, value: str | None) -> str | None:
         return trim_optional_description(value)
+
+    @field_validator("chat_url")
+    @classmethod
+    def trim_chat_url(cls, value: str | None) -> str | None:
+        return trim_optional_url(value)
 
     @field_validator("tags")
     @classmethod
@@ -260,6 +279,7 @@ class ProjectDetail(BaseModel):
     id: int
     name: str
     description: str | None
+    chat_url: str | None = None
     parent_id: int | None
     parent_name: str | None
     root_project_id: int
@@ -352,6 +372,7 @@ class ProjectExportSubProject(BaseModel):
     id: int
     name: str
     description: str | None
+    chat_url: str | None = None
     status: ProjectLifecycle
     reports_with_pmo: bool = True
     tags: list[str] = []
@@ -366,6 +387,7 @@ class ProjectExportRecord(BaseModel):
     id: int
     name: str
     description: str | None
+    chat_url: str | None = None
     group_id: int | None
     group_name: str | None
     status: ProjectLifecycle
