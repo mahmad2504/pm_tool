@@ -687,7 +687,7 @@ a {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 0.45rem 0.65rem;
+  gap: 0.35rem 0.45rem;
 }
 
 .group-mark {
@@ -1550,7 +1550,8 @@ a {
 }
 
 .project-card__head .tag-row {
-  flex: 1 0 auto;
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
 .tag-chip {
