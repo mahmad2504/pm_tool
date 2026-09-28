@@ -144,6 +144,7 @@ def _sub_project_summaries(
     shared = _shared_counts(db, ids, shared_resource_ids or set())
     if tag_map is None:
         tag_map = tags_for_projects(db, ids)
+    latest_reports = _latest_status_reports(db, ids)
     return [
         SubProjectSummary(
             id=child.id,
@@ -153,6 +154,7 @@ def _sub_project_summaries(
             resource_count=counts[child.id],
             shared_count=shared[child.id],
             tags=_tag_refs(tag_map, child.id),
+            latest_report_at=latest_reports[child.id][1] if child.id in latest_reports else None,
         )
         for child in ordered
     ]

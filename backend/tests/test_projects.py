@@ -633,3 +633,25 @@ def test_project_report_includes_latest_status_time(client):
     project = report.json()["groups"][0]["projects"][0]
     assert project["latest_status"] == "Old update"
     assert project["latest_status_at"].startswith("2026-01-01T12:00:00")
+
+
+def test_sub_project_summary_includes_latest_report_at(client):
+    root = create_root(client, name="Parent", group_name="Platform").json()
+    reported = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Reported"},
+    ).json()
+    client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Silent"},
+    )
+    created = client.post(
+        f"/api/projects/{reported['id']}/status-reports",
+        json={"body": "Filed on the first", "created_at": "2026-09-01T22:30:00Z"},
+    )
+    assert created.status_code == 201
+
+    listed = client.get("/api/projects", params={"roots_only": True}).json()
+    subs = {item["name"]: item for item in listed["items"][0]["sub_projects"]}
+    assert subs["Reported"]["latest_report_at"].startswith("2026-09-01T22:30:00")
+    assert subs["Silent"]["latest_report_at"] is None

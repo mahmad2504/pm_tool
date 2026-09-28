@@ -36,6 +36,23 @@ import {
   isoToDatetimeLocal,
 } from "../utils/datetimeLocal";
 
+const REPORT_FRESH_DAYS = 7;
+
+function subReportFreshness(
+  reportedAt: string | null,
+  today = new Date(),
+): "today" | "fresh" | "stale" | null {
+  if (!reportedAt) return null;
+  const reported = new Date(reportedAt);
+  if (Number.isNaN(reported.getTime())) return null;
+  const reportDay = new Date(reported.getFullYear(), reported.getMonth(), reported.getDate());
+  const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  if (todayDay.getTime() === reportDay.getTime()) return "today";
+  const staleOn = new Date(reportDay);
+  staleOn.setDate(staleOn.getDate() + REPORT_FRESH_DAYS);
+  return todayDay >= staleOn ? "stale" : "fresh";
+}
+
 
 function GroupMark({
   name,
@@ -536,9 +553,6 @@ export function ProjectsPage() {
                       onClick={() => openGroupEditor(p)}
                     />
                   )}
-                  <h3 className="project-card__title">
-                    <Link to={`/projects/${p.id}`}>{p.name}</Link>
-                  </h3>
                   <div className="project-card__head-actions">
                     <ProjectStatusSelect
                       status={p.status}
@@ -589,6 +603,9 @@ export function ProjectsPage() {
                     )}
                   </div>
                 </div>
+                <h3 className="project-card__title">
+                  <Link to={`/projects/${p.id}`}>{p.name}</Link>
+                </h3>
                 <p className="project-card__description">
                   {p.description || "No description"}
                 </p>
@@ -601,26 +618,43 @@ export function ProjectsPage() {
                 />
                 {p.sub_projects.length > 0 && (
                   <ul className="project-card__subs">
-                    {p.sub_projects.map((sub) => (
-                      <li key={sub.id}>
-                        <Link to={`/projects/${sub.id}`}>
-                          {sub.name}
-                          {sub.resource_count > 0 && (
-                            <SubProjectPeopleHint
-                              projectId={sub.id}
-                              count={sub.resource_count}
-                            />
-                          )}
-                        </Link>
-                        <TagChips
-                          tags={sub.tags}
-                          activeId={tagFilter}
-                          onSelect={(tagId) =>
-                            setTagFilter((current) => (current === tagId ? "" : tagId))
-                          }
-                        />
-                      </li>
-                    ))}
+                    {p.sub_projects.map((sub) => {
+                      const reportFreshness = subReportFreshness(sub.latest_report_at);
+                      return (
+                        <li key={sub.id}>
+                          <Link
+                            to={`/projects/${sub.id}`}
+                            className={
+                              reportFreshness ? `project-card__sub--${reportFreshness}` : undefined
+                            }
+                            title={
+                              reportFreshness === "today"
+                                ? "Report updated today"
+                                : reportFreshness === "fresh"
+                                  ? "Report within 7 days"
+                                  : reportFreshness === "stale"
+                                    ? "Report is 7 days old"
+                                    : undefined
+                            }
+                          >
+                            {sub.name}
+                            {sub.resource_count > 0 && (
+                              <SubProjectPeopleHint
+                                projectId={sub.id}
+                                count={sub.resource_count}
+                              />
+                            )}
+                          </Link>
+                          <TagChips
+                            tags={sub.tags}
+                            activeId={tagFilter}
+                            onSelect={(tagId) =>
+                              setTagFilter((current) => (current === tagId ? "" : tagId))
+                            }
+                          />
+                        </li>
+                      );
+                    })}
                   </ul>
                 )}
                 <div className="project-card__footer">

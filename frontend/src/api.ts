@@ -224,6 +224,7 @@ export interface SubProjectSummary {
   resource_count: number;
   shared_count?: number;
   tags: TagRef[];
+  latest_report_at: string | null;
 }
 
 export interface DuplicateResource {

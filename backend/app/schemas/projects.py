@@ -159,6 +159,7 @@ class SubProjectSummary(BaseModel):
     resource_count: int = 0
     shared_count: int = 0
     tags: list[TagRef] = []
+    latest_report_at: datetime | None = None
 
 
 class DuplicateResource(BaseModel):
