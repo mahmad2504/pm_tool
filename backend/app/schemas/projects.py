@@ -181,9 +181,11 @@ class ProjectSummary(BaseModel):
     group_id: int | None = None
     group_icon_url: str | None = None
     status: ProjectLifecycle
+    reports_with_pmo: bool = True
     tags: list[TagRef] = []
     resource_count: int
     status_report_count: int
+    latest_report_at: datetime | None = None
     sub_project_count: int
     sub_projects: list[SubProjectSummary] = []
     duplicate_resources: list[DuplicateResource] = []

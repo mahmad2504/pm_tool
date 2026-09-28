@@ -245,9 +245,11 @@ export interface ProjectSummary {
   group_id: number | null;
   group_icon_url: string | null;
   status: ProjectStatus;
+  reports_with_pmo: boolean;
   tags: TagRef[];
   resource_count: number;
   status_report_count: number;
+  latest_report_at: string | null;
   sub_project_count: number;
   sub_projects: SubProjectSummary[];
   duplicate_resources: DuplicateResource[];

@@ -53,6 +53,29 @@ function subReportFreshness(
   return todayDay >= staleOn ? "stale" : "fresh";
 }
 
+function reportChipAppearance(
+  reportsWithPmo: boolean,
+  latestReportAt: string | null,
+): { className?: string; title?: string } {
+  if (reportsWithPmo === false) {
+    return {
+      className: "project-card__sub--not-pmo",
+      title: "Reporting is not with PMO",
+    };
+  }
+  const reportFreshness = subReportFreshness(latestReportAt);
+  if (reportFreshness === "today") {
+    return { className: "project-card__sub--today", title: "Report updated today" };
+  }
+  if (reportFreshness === "fresh") {
+    return { className: "project-card__sub--fresh", title: "Report within 7 days" };
+  }
+  if (reportFreshness === "stale") {
+    return { className: "project-card__sub--stale", title: "Report is 7 days old" };
+  }
+  return {};
+}
+
 
 function GroupMark({
   name,
@@ -543,6 +566,7 @@ export function ProjectsPage() {
           <ul className="resource-grid">
             {projects.map((p) => {
               const duplicates = p.duplicate_resources ?? [];
+              const emptyChip = reportChipAppearance(p.reports_with_pmo, p.latest_report_at);
               return (
               <li key={p.id} className="resource-card project-card">
                 <div className="project-card__head">
@@ -563,6 +587,7 @@ export function ProjectsPage() {
                   <div className="project-card__head-actions">
                     <ProjectStatusSelect
                       status={p.status}
+                      reportsWithPmo={p.reports_with_pmo}
                       label={`Status for ${p.name}`}
                       onChange={(status) => void changeProjectStatus(p.id, status)}
                     />
@@ -613,35 +638,16 @@ export function ProjectsPage() {
                 <h3 className="project-card__title">
                   <Link to={`/projects/${p.id}`}>{p.name}</Link>
                 </h3>
-                {p.sub_projects.length > 0 && (
+                {p.sub_projects.length > 0 ? (
                   <ul className="project-card__subs">
                     {p.sub_projects.map((sub) => {
-                      const dormantForPmo = sub.reports_with_pmo === false;
-                      const reportFreshness = dormantForPmo
-                        ? null
-                        : subReportFreshness(sub.latest_report_at);
+                      const chip = reportChipAppearance(sub.reports_with_pmo, sub.latest_report_at);
                       return (
                         <li key={sub.id}>
                           <Link
                             to={`/projects/${sub.id}`}
-                            className={
-                              dormantForPmo
-                                ? "project-card__sub--not-pmo"
-                                : reportFreshness
-                                  ? `project-card__sub--${reportFreshness}`
-                                  : undefined
-                            }
-                            title={
-                              dormantForPmo
-                                ? "Reporting is not with PMO"
-                                : reportFreshness === "today"
-                                  ? "Report updated today"
-                                  : reportFreshness === "fresh"
-                                    ? "Report within 7 days"
-                                    : reportFreshness === "stale"
-                                      ? "Report is 7 days old"
-                                      : undefined
-                            }
+                            className={chip.className}
+                            title={chip.title}
                           >
                             {sub.name}
                             {sub.resource_count > 0 && (
@@ -661,6 +667,17 @@ export function ProjectsPage() {
                         </li>
                       );
                     })}
+                  </ul>
+                ) : (
+                  <ul className="project-card__subs">
+                    <li>
+                      <span
+                        className={["project-card__sub", emptyChip.className].filter(Boolean).join(" ")}
+                        title={emptyChip.title}
+                      >
+                        No sub-projects
+                      </span>
+                    </li>
                   </ul>
                 )}
                 <div className="project-card__footer">

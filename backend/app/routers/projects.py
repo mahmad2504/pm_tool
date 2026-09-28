@@ -219,6 +219,7 @@ def _to_summary(
         parent_name = parent.name if parent else None
     group = effective_group(db, project)
     tag_map = tags_for_projects(db, [project.id, *[child.id for child in children]])
+    latest_reports = _latest_status_reports(db, [project.id])
     return ProjectSummary(
         id=project.id,
         name=project.name,
@@ -231,9 +232,11 @@ def _to_summary(
         group_id=group.id if group else None,
         group_icon_url=group_icon_url(group),
         status=ProjectLifecycle(project.status),
+        reports_with_pmo=project.reports_with_pmo,
         tags=_tag_refs(tag_map, project.id),
         resource_count=rc,
         status_report_count=src,
+        latest_report_at=latest_reports[project.id][1] if project.id in latest_reports else None,
         sub_project_count=len(children),
         sub_projects=_sub_project_summaries(
             db, children, {item.id for item in duplicate_resources}, tag_map

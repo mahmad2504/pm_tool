@@ -685,6 +685,7 @@ def test_reports_with_pmo_is_independent_per_row(client):
 
     listed = client.get("/api/projects", params={"roots_only": True, "q": "Outside PMO"}).json()
     tile = next(item for item in listed["items"] if item["id"] == root["id"])
+    assert tile["reports_with_pmo"] is False
     assert tile["sub_projects"][0]["reports_with_pmo"] is False
 
     report = client.get("/api/projects/report")
@@ -700,3 +701,29 @@ def test_reports_with_pmo_is_independent_per_row(client):
     row = next(json.loads(line) for line in exported.text.splitlines() if line.strip())
     assert row["reports_with_pmo"] is False
     assert row["sub_projects"][0]["reports_with_pmo"] is False
+
+
+def test_root_without_children_includes_latest_report_at(client):
+    root = create_root(client, name="Standalone", group_name="Platform").json()
+    listed = client.get("/api/projects", params={"roots_only": True, "q": "Standalone"}).json()
+    tile = next(item for item in listed["items"] if item["id"] == root["id"])
+    assert tile["sub_projects"] == []
+    assert tile["reports_with_pmo"] is True
+    assert tile["latest_report_at"] is None
+
+    created = client.post(
+        f"/api/projects/{root['id']}/status-reports",
+        json={"body": "Filed on the first", "created_at": "2026-09-01T22:30:00Z"},
+    )
+    assert created.status_code == 201
+
+    reported = client.get("/api/projects", params={"roots_only": True, "q": "Standalone"}).json()
+    tile = next(item for item in reported["items"] if item["id"] == root["id"])
+    assert tile["latest_report_at"].startswith("2026-09-01T22:30:00")
+
+    turned_off = client.patch(f"/api/projects/{root['id']}", json={"reports_with_pmo": False})
+    assert turned_off.status_code == 200
+    dormant = client.get("/api/projects", params={"roots_only": True, "q": "Standalone"}).json()
+    tile = next(item for item in dormant["items"] if item["id"] == root["id"])
+    assert tile["reports_with_pmo"] is False
+    assert tile["latest_report_at"].startswith("2026-09-01T22:30:00")
