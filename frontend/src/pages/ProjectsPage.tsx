@@ -616,22 +616,31 @@ export function ProjectsPage() {
                 {p.sub_projects.length > 0 && (
                   <ul className="project-card__subs">
                     {p.sub_projects.map((sub) => {
-                      const reportFreshness = subReportFreshness(sub.latest_report_at);
+                      const dormantForPmo = sub.reports_with_pmo === false;
+                      const reportFreshness = dormantForPmo
+                        ? null
+                        : subReportFreshness(sub.latest_report_at);
                       return (
                         <li key={sub.id}>
                           <Link
                             to={`/projects/${sub.id}`}
                             className={
-                              reportFreshness ? `project-card__sub--${reportFreshness}` : undefined
+                              dormantForPmo
+                                ? "project-card__sub--not-pmo"
+                                : reportFreshness
+                                  ? `project-card__sub--${reportFreshness}`
+                                  : undefined
                             }
                             title={
-                              reportFreshness === "today"
-                                ? "Report updated today"
-                                : reportFreshness === "fresh"
-                                  ? "Report within 7 days"
-                                  : reportFreshness === "stale"
-                                    ? "Report is 7 days old"
-                                    : undefined
+                              dormantForPmo
+                                ? "Reporting is not with PMO"
+                                : reportFreshness === "today"
+                                  ? "Report updated today"
+                                  : reportFreshness === "fresh"
+                                    ? "Report within 7 days"
+                                    : reportFreshness === "stale"
+                                      ? "Report is 7 days old"
+                                      : undefined
                             }
                           >
                             {sub.name}

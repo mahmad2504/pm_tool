@@ -221,6 +221,7 @@ export interface SubProjectSummary {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  reports_with_pmo: boolean;
   resource_count: number;
   shared_count?: number;
   tags: TagRef[];

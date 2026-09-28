@@ -683,6 +683,10 @@ def test_reports_with_pmo_is_independent_per_row(client):
     assert client.get(f"/api/projects/{root['id']}").json()["reports_with_pmo"] is False
     assert client.get(f"/api/projects/{sub['id']}").json()["reports_with_pmo"] is False
 
+    listed = client.get("/api/projects", params={"roots_only": True, "q": "Outside PMO"}).json()
+    tile = next(item for item in listed["items"] if item["id"] == root["id"])
+    assert tile["sub_projects"][0]["reports_with_pmo"] is False
+
     report = client.get("/api/projects/report")
     assert report.status_code == 200
     project = report.json()["groups"][0]["projects"][0]

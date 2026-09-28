@@ -157,6 +157,7 @@ class SubProjectSummary(BaseModel):
     name: str
     description: str | None
     status: ProjectLifecycle
+    reports_with_pmo: bool = True
     resource_count: int = 0
     shared_count: int = 0
     tags: list[TagRef] = []

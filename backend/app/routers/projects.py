@@ -151,6 +151,7 @@ def _sub_project_summaries(
             name=child.name,
             description=child.description,
             status=ProjectLifecycle(child.status),
+            reports_with_pmo=child.reports_with_pmo,
             resource_count=counts[child.id],
             shared_count=shared[child.id],
             tags=_tag_refs(tag_map, child.id),
