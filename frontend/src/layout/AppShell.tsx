@@ -36,14 +36,6 @@ export function AppShell({
           >
             Projects
           </NavLink>
-          <NavLink
-            to="/report"
-            className={({ isActive }) =>
-              `nav-item${isActive ? " nav-item--active" : ""}`
-            }
-          >
-            Report
-          </NavLink>
         </nav>
         <a
           className="sidebar__link"
