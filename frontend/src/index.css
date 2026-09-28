@@ -1480,6 +1480,20 @@ a {
   color: var(--text-muted);
 }
 
+.modal__form label.check-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.modal__form label.check-row input {
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+}
+
 .modal__form input,
 .modal__form select,
 .modal__form textarea {

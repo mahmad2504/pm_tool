@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.database import Base, engine, run_sqlite_migrations
+from app.database import Base, engine, ensure_reports_with_pmo_column, run_sqlite_migrations
 from app.routers import groups, projects, resources, roles, tags
 
 
@@ -12,6 +12,7 @@ from app.routers import groups, projects, resources, roles, tags
 async def lifespan(_app: FastAPI):
     Base.metadata.create_all(bind=engine)
     run_sqlite_migrations()
+    ensure_reports_with_pmo_column()
     yield
 
 

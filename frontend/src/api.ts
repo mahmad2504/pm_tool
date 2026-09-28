@@ -274,6 +274,7 @@ export interface ProjectDetail {
   group_name: string | null;
   group_icon_url: string | null;
   status: ProjectStatus;
+  reports_with_pmo: boolean;
   tags: TagRef[];
   resources: AssignedResource[];
   sub_projects: SubProjectSummary[];
@@ -408,6 +409,7 @@ export interface ReportSubProject {
   description: string | null;
   status: ProjectStatus;
   tags: string[];
+  reports_with_pmo: boolean;
   latest_status: string | null;
   latest_status_at: string | null;
   resource_count: number;
@@ -432,6 +434,7 @@ export interface ReportProject {
   group_name: string | null;
   status: ProjectStatus;
   tags: string[];
+  reports_with_pmo: boolean;
   latest_status: string | null;
   latest_status_at: string | null;
   resource_count: number;
@@ -528,6 +531,7 @@ export function patchProject(
     description?: string | null;
     group_name?: string;
     status?: ProjectStatus;
+    reports_with_pmo?: boolean;
     tags?: string[];
   },
 ): Promise<ProjectSummary> {

@@ -189,17 +189,26 @@ function descriptionCell(
   );
 }
 
+const NOT_WITH_PMO_STATUS = "Status not available. Reporting is not with PMO.";
+
 function statusCell(
   body: string | null | undefined,
   reportedAt: string | null | undefined,
   statusKey: string,
   label: string,
   statuses: Record<string, string>,
-): string {
+  reportsWithPmo: boolean,
+): { className: string; html: string } {
+  if (!reportsWithPmo) {
+    return { className: "st st-not-pmo", html: escapeHtml(NOT_WITH_PMO_STATUS) };
+  }
   const raw = body?.trim();
-  if (!raw) return "";
+  if (!raw) return { className: "st", html: "" };
   const stale = statusReportIsStale(reportedAt) ? staleStatusMark(reportedAt as string) : "";
-  return `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS)}`;
+  return {
+    className: "st",
+    html: `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS)}`,
+  };
 }
 
 function outsideProjectLabels(people: ReportSharedResource[], groupName: string): string[] {
@@ -260,12 +269,20 @@ function projectTableRows(
         subCount > 0
           ? `<button type="button" class="expand" aria-expanded="false" aria-label="Show ${subLabel}"><span class="chevron" aria-hidden="true">▶</span> ${subLabel}</button>`
           : "";
+      const status = statusCell(
+        project.latest_status,
+        project.latest_status_at,
+        rootKey,
+        project.name,
+        statuses,
+        project.reports_with_pmo,
+      );
       const root = `<tr data-project="${project.id}">
         <td>${escapeHtml(project.name)}${expand}</td>
         <td>${descriptionCell(project.description, rootKey, project.name, descriptions)}</td>
         <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds, shareProjects)}</td>
         <td class="state">${stateCell(project.status)}</td>
-        <td class="st">${statusCell(project.latest_status, project.latest_status_at, rootKey, project.name, statuses)}</td>
+        <td class="${status.className}">${status.html}</td>
       </tr>`;
       const subs = project.sub_projects
         .map((sub) => {
@@ -274,12 +291,20 @@ function projectTableRows(
           shared[subKey] = sub.shared_resources;
           unique[subKey] = uniquePeople(sub.resources, sub.shared_resources);
           const label = `${project.name} / ${sub.name}`;
+          const subStatus = statusCell(
+            sub.latest_status,
+            sub.latest_status_at,
+            subKey,
+            label,
+            statuses,
+            sub.reports_with_pmo,
+          );
           return `<tr class="sub" data-parent="${project.id}">
         <td class="sub-name">${escapeHtml(sub.name)}</td>
         <td>${descriptionCell(sub.description, subKey, label, descriptions)}</td>
         <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]), shareProjects)}</td>
         <td class="state">${stateCell(sub.status)}</td>
-        <td class="st">${statusCell(sub.latest_status, sub.latest_status_at, subKey, label, statuses)}</td>
+        <td class="${subStatus.className}">${subStatus.html}</td>
       </tr>`;
         })
         .join("");
@@ -506,6 +531,12 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     td.res { width: 24%; }
     td.state { width: 1%; white-space: nowrap; }
     td.st { width: 28%; }
+    table.family td.st.st-not-pmo {
+      background: #fff4d6;
+      color: #7a4e00;
+      font-weight: 600;
+      box-shadow: inset 4px 0 0 #b45309;
+    }
     .status-stale {
       display: inline-block;
       width: 16px;
@@ -657,7 +688,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     @media print {
       body { background: #fff; }
       .page { margin: 0; border: 0; }
-      .page > header, th, .kpi, .tag, tbody tr, .status-stale {
+      .page > header, th, .kpi, .tag, tbody tr, .status-stale, td.st.st-not-pmo {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }

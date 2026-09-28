@@ -157,6 +157,7 @@ export function ProjectDetailPage() {
     description: "",
     group_name: "",
     status: "assessment" as ProjectStatus,
+    reports_with_pmo: true,
   });
   const [subForm, setSubForm] = useState({
     name: "",
@@ -190,6 +191,7 @@ export function ProjectDetailPage() {
         description: detail.description ?? "",
         group_name: detail.group_name ?? "",
         status: detail.status,
+        reports_with_pmo: detail.reports_with_pmo,
       });
       const rep = await listStatusReports(
         projectId,
@@ -223,6 +225,20 @@ export function ProjectDetailPage() {
     }
   }
 
+  async function changeReportsWithPmo(next: boolean) {
+    if (!project) return;
+    const previous = editMeta.reports_with_pmo;
+    setEditMeta((meta) => ({ ...meta, reports_with_pmo: next }));
+    setError(null);
+    try {
+      await patchProject(project.id, { reports_with_pmo: next });
+      setProject((current) => (current ? { ...current, reports_with_pmo: next } : current));
+    } catch (err) {
+      setEditMeta((meta) => ({ ...meta, reports_with_pmo: previous }));
+      setError(err instanceof Error ? err.message : "Failed to update PMO reporting");
+    }
+  }
+
   async function saveTags(next: string[]) {
     if (!project) return;
     setTagsSaving(true);
@@ -246,10 +262,12 @@ export function ProjectDetailPage() {
         description: string | null;
         group_name?: string;
         status: ProjectStatus;
+        reports_with_pmo: boolean;
       } = {
         name: editMeta.name.trim(),
         description: editMeta.description.trim() || null,
         status: editMeta.status,
+        reports_with_pmo: editMeta.reports_with_pmo,
       };
       if (project.is_root) {
         payload.group_name = editMeta.group_name.trim();
@@ -543,6 +561,17 @@ export function ProjectDetailPage() {
               ))}
             </select>
           </label>
+          <label className="check-row">
+            <input
+              type="checkbox"
+              checked={editMeta.reports_with_pmo}
+              onChange={(e) => void changeReportsWithPmo(e.target.checked)}
+            />
+            Reporting with PMO
+          </label>
+          <p className="muted">
+            Saves immediately. When this is off, only this project’s Status cell in the report changes.
+          </p>
           <label>
             Description
             <textarea

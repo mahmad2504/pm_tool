@@ -337,6 +337,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
         group_id=group.id if group else None,
         group_name=group.name if group else None,
         status=ProjectLifecycle(project.status),
+        reports_with_pmo=project.reports_with_pmo,
         tags=_tag_names(tag_map, project.id),
         created_at=project.created_at,
         updated_at=project.updated_at,
@@ -352,6 +353,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
                 name=child.name,
                 description=child.description,
                 status=ProjectLifecycle(child.status),
+                reports_with_pmo=child.reports_with_pmo,
                 tags=_tag_names(tag_map, child.id),
                 created_at=child.created_at,
                 updated_at=child.updated_at,
@@ -565,6 +567,7 @@ def project_report(
                 group_name=group.name if group else None,
                 status=ProjectLifecycle(root.status),
                 tags=_tag_names(tag_map, root.id),
+                reports_with_pmo=root.reports_with_pmo,
                 latest_status=latest_status[root.id][0] if root.id in latest_status else None,
                 latest_status_at=latest_status[root.id][1] if root.id in latest_status else None,
                 resource_count=len(member_ids),
@@ -579,6 +582,7 @@ def project_report(
                         description=child.description,
                         status=ProjectLifecycle(child.status),
                         tags=_tag_names(tag_map, child.id),
+                        reports_with_pmo=child.reports_with_pmo,
                         latest_status=latest_status[child.id][0] if child.id in latest_status else None,
                         latest_status_at=latest_status[child.id][1] if child.id in latest_status else None,
                         resource_count=len(members.get(child.id, set())),
@@ -732,6 +736,7 @@ def get_project(
         group_name=group.name if group else None,
         group_icon_url=group_icon_url(group),
         status=ProjectLifecycle(project.status),
+        reports_with_pmo=project.reports_with_pmo,
         tags=_tag_refs(tag_map, project.id),
         resources=assignments,
         sub_projects=_sub_project_summaries(db, children, tag_map=tag_map),
@@ -779,6 +784,8 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
         project.description = data["description"]
     if "status" in data and data["status"] is not None:
         project.status = data["status"].value
+    if "reports_with_pmo" in data and data["reports_with_pmo"] is not None:
+        project.reports_with_pmo = data["reports_with_pmo"]
     if "tags" in data and data["tags"] is not None:
         set_project_tags(db, project, data["tags"])
 

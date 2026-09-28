@@ -89,6 +89,9 @@ class Project(Base):
     status: Mapped[str] = mapped_column(
         String(32), nullable=False, default=ProjectLifecycle.assessment.value
     )
+    reports_with_pmo: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="1"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utc_now, nullable=False
     )

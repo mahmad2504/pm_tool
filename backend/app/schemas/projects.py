@@ -118,6 +118,7 @@ class ProjectPatch(BaseModel):
     description: str | None = None
     group_name: str | None = Field(default=None, max_length=255)
     status: ProjectLifecycle | None = None
+    reports_with_pmo: bool | None = None
     tags: list[str] | None = None
 
     @field_validator("name")
@@ -214,6 +215,7 @@ class ReportSubProject(BaseModel):
     description: str | None
     status: ProjectLifecycle
     tags: list[str] = []
+    reports_with_pmo: bool = True
     latest_status: str | None
     latest_status_at: datetime | None
     resource_count: int
@@ -228,6 +230,7 @@ class ReportProject(BaseModel):
     group_name: str | None
     status: ProjectLifecycle
     tags: list[str] = []
+    reports_with_pmo: bool = True
     latest_status: str | None
     latest_status_at: datetime | None
     resource_count: int
@@ -262,6 +265,7 @@ class ProjectDetail(BaseModel):
     group_name: str | None
     group_icon_url: str | None = None
     status: ProjectLifecycle
+    reports_with_pmo: bool = True
     tags: list[TagRef] = []
     resources: list["AssignedResourceRead"]
     sub_projects: list[SubProjectSummary]
@@ -346,6 +350,7 @@ class ProjectExportSubProject(BaseModel):
     name: str
     description: str | None
     status: ProjectLifecycle
+    reports_with_pmo: bool = True
     tags: list[str] = []
     created_at: datetime
     updated_at: datetime
@@ -361,6 +366,7 @@ class ProjectExportRecord(BaseModel):
     group_id: int | None
     group_name: str | None
     status: ProjectLifecycle
+    reports_with_pmo: bool = True
     tags: list[str] = []
     created_at: datetime
     updated_at: datetime

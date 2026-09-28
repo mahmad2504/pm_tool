@@ -655,3 +655,44 @@ def test_sub_project_summary_includes_latest_report_at(client):
     subs = {item["name"]: item for item in listed["items"][0]["sub_projects"]}
     assert subs["Reported"]["latest_report_at"].startswith("2026-09-01T22:30:00")
     assert subs["Silent"]["latest_report_at"] is None
+
+
+def test_reports_with_pmo_is_independent_per_row(client):
+    import json
+
+    root = create_root(client, name="Outside PMO", group_name="Platform").json()
+    sub = client.post(
+        f"/api/projects/{root['id']}/sub-projects",
+        json={"name": "Tracked elsewhere"},
+    ).json()
+
+    root_detail = client.get(f"/api/projects/{root['id']}")
+    assert root_detail.status_code == 200
+    assert root_detail.json()["reports_with_pmo"] is True
+
+    root_off = client.patch(
+        f"/api/projects/{root['id']}",
+        json={"reports_with_pmo": False},
+    )
+    sub_off = client.patch(
+        f"/api/projects/{sub['id']}",
+        json={"reports_with_pmo": False},
+    )
+    assert root_off.status_code == 200
+    assert sub_off.status_code == 200
+    assert client.get(f"/api/projects/{root['id']}").json()["reports_with_pmo"] is False
+    assert client.get(f"/api/projects/{sub['id']}").json()["reports_with_pmo"] is False
+
+    report = client.get("/api/projects/report")
+    assert report.status_code == 200
+    project = report.json()["groups"][0]["projects"][0]
+    assert project["id"] == root["id"]
+    assert project["reports_with_pmo"] is False
+    assert project["sub_projects"][0]["id"] == sub["id"]
+    assert project["sub_projects"][0]["reports_with_pmo"] is False
+
+    exported = client.get("/api/projects/export", params={"q": "Outside PMO", "reports": 0})
+    assert exported.status_code == 200
+    row = next(json.loads(line) for line in exported.text.splitlines() if line.strip())
+    assert row["reports_with_pmo"] is False
+    assert row["sub_projects"][0]["reports_with_pmo"] is False
