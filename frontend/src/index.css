@@ -968,18 +968,6 @@ a {
   color: var(--text-muted);
 }
 
-.project-card__description {
-  margin: 0;
-  font-size: 0.88rem;
-  color: var(--text-muted);
-  line-height: 1.45;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-}
-
 .project-card__updated {
   margin: 0.35rem 0 0;
   font-size: 0.8rem;

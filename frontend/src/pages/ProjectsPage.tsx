@@ -606,9 +606,6 @@ export function ProjectsPage() {
                 <h3 className="project-card__title">
                   <Link to={`/projects/${p.id}`}>{p.name}</Link>
                 </h3>
-                <p className="project-card__description">
-                  {p.description || "No description"}
-                </p>
                 <TagChips
                   tags={p.tags}
                   activeId={tagFilter}
