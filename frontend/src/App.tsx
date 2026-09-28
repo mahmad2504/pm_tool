@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { ProjectDetailPage } from "./pages/ProjectDetailPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ReportPage } from "./pages/ReportPage";
 import { ResourcesPage } from "./pages/ResourcesPage";
 
 export default function App() {
@@ -11,6 +12,7 @@ export default function App() {
         <Route path="/resources" element={<ResourcesPage />} />
         <Route path="/projects" element={<ProjectsPage />} />
         <Route path="/projects/:id" element={<ProjectDetailPage />} />
+        <Route path="/report" element={<ReportPage />} />
       </Routes>
     </BrowserRouter>
   );

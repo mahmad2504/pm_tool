@@ -2,7 +2,13 @@ import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { OverUtilizationNotice } from "../components/OverUtilizationNotice";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  wide = false,
+}: {
+  children: ReactNode;
+  wide?: boolean;
+}) {
   return (
     <div className="app">
       <aside className="sidebar">
@@ -30,6 +36,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           >
             Projects
           </NavLink>
+          <NavLink
+            to="/report"
+            className={({ isActive }) =>
+              `nav-item${isActive ? " nav-item--active" : ""}`
+            }
+          >
+            Report
+          </NavLink>
         </nav>
         <a
           className="sidebar__link"
@@ -40,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           API documentation →
         </a>
       </aside>
-      <main className="main">
+      <main className={wide ? "main main--wide" : "main"}>
         <OverUtilizationNotice />
         {children}
       </main>

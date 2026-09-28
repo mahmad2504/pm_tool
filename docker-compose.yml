@@ -60,13 +60,47 @@ services:
     build:
       context: ./frontend
       args:
-        # URL the browser on the host uses to reach the published API port.
-        VITE_API_URL: http://localhost:8000
+        # Empty so the browser calls /api on the same host (nginx or ngrok).
+        VITE_API_URL: ""
     ports:
       - "5173:5173"
     depends_on:
       backend:
         condition: service_healthy
+
+  nginx:
+    build:
+      context: ./nginx
+    ports:
+      - "80:80"
+    environment:
+      PM_BASIC_AUTH_USER: ${PM_BASIC_AUTH_USER:-pm}
+      PM_BASIC_AUTH_PASSWORD: ${PM_BASIC_AUTH_PASSWORD:?Set PM_BASIC_AUTH_PASSWORD in .env}
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/proxy-frontend.conf:/etc/nginx/proxy-frontend.conf:ro
+      - ./nginx/site:/usr/share/nginx/site:ro
+      - ./portfolio-report.html:/usr/share/nginx/reports/portfolio-report.html:ro
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+
+  ngrok:
+    image: ngrok/ngrok:latest
+    restart: unless-stopped
+    volumes:
+      - ${LOCALAPPDATA}/ngrok/ngrok.yml:/var/lib/ngrok/ngrok.yml:ro
+    command:
+      - http
+      - --log=stdout
+      - --url=${NGROK_URL:-https://annie-concealable-explosively.ngrok-free.dev}
+      - nginx:80
+    ports:
+      - "4040:4040"
+    depends_on:
+      - nginx
 
 volumes:
   mysql_data:

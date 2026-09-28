@@ -142,6 +142,13 @@ a {
   max-width: 1200px;
 }
 
+.main--wide {
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
 .main-header {
   display: flex;
   flex-wrap: wrap;
@@ -1409,33 +1416,20 @@ a {
   font-size: 0.9rem;
 }
 
-.html-report {
-  position: fixed;
-  inset: 0;
-  z-index: 40;
+.report-page {
   display: flex;
   flex-direction: column;
-  background: #f6f8fb;
+  flex: 1;
+  min-height: 0;
+  gap: 1rem;
 }
 
-.html-report__bar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.5rem;
-  padding: 0.65rem 1rem;
-  background: #fff;
-  border-bottom: 1px solid #d7dee7;
-}
-
-.html-report__status {
-  margin: 2rem;
-  color: #3d4b5c;
-}
-
-.html-report__frame {
+.report-page__frame {
   flex: 1;
   width: 100%;
-  border: 0;
+  min-height: 70vh;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   background: #f6f8fb;
 }
 

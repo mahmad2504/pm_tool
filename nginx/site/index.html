@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Logic Silicon</title>
+    <meta name="theme-color" content="#0c1220" />
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0c1220;
+        --text: #eef3f8;
+        --muted: #9aa8b8;
+        --line: rgba(255, 255, 255, 0.12);
+        --accent: #7eb6e6;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+      }
+
+      body {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 2rem;
+        font-family: "Segoe UI", system-ui, sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(900px 420px at 50% -10%, rgba(126, 182, 230, 0.16), transparent 60%),
+          var(--bg);
+      }
+
+      main {
+        width: min(40rem, 100%);
+        padding-top: 1.5rem;
+        border-top: 1px solid var(--line);
+      }
+
+      p.mark {
+        margin: 0 0 1.25rem;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        color: var(--accent);
+      }
+
+      h1 {
+        margin: 0;
+        font-size: clamp(2.4rem, 6vw, 3.6rem);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+      }
+
+      p.lead {
+        margin: 1rem 0 0;
+        max-width: 28rem;
+        color: var(--muted);
+        font-size: 1.05rem;
+        line-height: 1.6;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="mark">Engineering</p>
+      <h1>Logic Silicon</h1>
+      <p class="lead">Semiconductor design and verification.</p>
+    </main>
+  </body>
+</html>
