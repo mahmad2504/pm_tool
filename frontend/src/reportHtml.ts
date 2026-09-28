@@ -238,6 +238,11 @@ function groupResourceNote(
   return `<div>${unique} unique</div><div>${sharedPhrase}</div>`;
 }
 
+function projectTagMarkup(tags: string[]): string {
+  if (tags.length === 0) return "";
+  return `<div class="ptags">${tags.map((tag) => `<span class="ptag">${escapeHtml(tag)}</span>`).join("")}</div>`;
+}
+
 function projectTableRows(
   projects: ReportProject[],
   resources: Record<string, ReportSharedResource[]>,
@@ -261,7 +266,7 @@ function projectTableRows(
           ? `<button type="button" class="expand" aria-expanded="false" aria-label="Show ${subLabel}"><span class="chevron" aria-hidden="true">▶</span> ${subLabel}</button>`
           : "";
       const root = `<tr data-project="${project.id}">
-        <td>${escapeHtml(project.name)}${expand}</td>
+        <td>${escapeHtml(project.name)}${projectTagMarkup(project.tags)}${expand}</td>
         <td>${descriptionCell(project.description, rootKey, project.name, descriptions)}</td>
         <td class="res">${resourceCell(project.resources, project.shared_resources, rootKey, project.name, homeIds, shareProjects)}</td>
         <td class="state">${stateCell(project.status)}</td>
@@ -275,7 +280,7 @@ function projectTableRows(
           unique[subKey] = uniquePeople(sub.resources, sub.shared_resources);
           const label = `${project.name} / ${sub.name}`;
           return `<tr class="sub" data-parent="${project.id}">
-        <td class="sub-name">${escapeHtml(sub.name)}</td>
+        <td class="sub-name">${escapeHtml(sub.name)}${projectTagMarkup(sub.tags)}</td>
         <td>${descriptionCell(sub.description, subKey, label, descriptions)}</td>
         <td class="res">${resourceCell(sub.resources, sub.shared_resources, subKey, label, new Set([sub.id]), shareProjects)}</td>
         <td class="state">${stateCell(sub.status)}</td>
@@ -484,6 +489,18 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     .tag.dv { background: #e0e7ff; color: #3730a3; }
     .tag.ai { background: #ffedd5; color: #9a3412; }
     .tag.na { background: #dcfce7; color: #166534; }
+    .ptags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+    .ptag {
+      display: inline-block;
+      padding: 1px 6px;
+      border-radius: 999px;
+      background: #e0e7ff;
+      color: #3730a3;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: none;
+    }
     p.lead { margin: 0 0 16px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
     th, td {

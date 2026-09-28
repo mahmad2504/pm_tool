@@ -30,6 +30,7 @@ from app.schemas.projects import (
     ProjectSummary,
     ProjectUpdateRoot,
     StatusReportCreate,
+    TagRef,
     StatusReportListResponse,
     StatusReportRead,
     StatusReportUpdate,
@@ -49,6 +50,14 @@ from app.services.projects import (
     move_sub_project,
     touch_project,
     validate_parent_for_new_sub,
+)
+from app.services.tags import (
+    family_has_tag,
+    family_tag_name_matches,
+    project_has_tag,
+    project_tag_name_matches,
+    set_project_tags,
+    tags_for_projects,
 )
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
@@ -113,15 +122,28 @@ def _shared_counts(
     return counts
 
 
+def _tag_refs(
+    tag_map: dict[int, list[tuple[int, str]]], project_id: int
+) -> list[TagRef]:
+    return [TagRef(id=tag_id, name=name) for tag_id, name in tag_map.get(project_id, [])]
+
+
+def _tag_names(tag_map: dict[int, list[tuple[int, str]]], project_id: int) -> list[str]:
+    return [name for _tag_id, name in tag_map.get(project_id, [])]
+
+
 def _sub_project_summaries(
     db: Session,
     children: list[Project],
     shared_resource_ids: set[int] | None = None,
+    tag_map: dict[int, list[tuple[int, str]]] | None = None,
 ) -> list[SubProjectSummary]:
     ordered = sorted(children, key=lambda child: (child.name.lower(), child.id))
     ids = [child.id for child in ordered]
     counts = _resource_counts(db, ids)
     shared = _shared_counts(db, ids, shared_resource_ids or set())
+    if tag_map is None:
+        tag_map = tags_for_projects(db, ids)
     return [
         SubProjectSummary(
             id=child.id,
@@ -130,6 +152,7 @@ def _sub_project_summaries(
             status=ProjectLifecycle(child.status),
             resource_count=counts[child.id],
             shared_count=shared[child.id],
+            tags=_tag_refs(tag_map, child.id),
         )
         for child in ordered
     ]
@@ -192,6 +215,7 @@ def _to_summary(
         parent = db.get(Project, project.parent_id)
         parent_name = parent.name if parent else None
     group = effective_group(db, project)
+    tag_map = tags_for_projects(db, [project.id, *[child.id for child in children]])
     return ProjectSummary(
         id=project.id,
         name=project.name,
@@ -204,11 +228,12 @@ def _to_summary(
         group_id=group.id if group else None,
         group_icon_url=group_icon_url(group),
         status=ProjectLifecycle(project.status),
+        tags=_tag_refs(tag_map, project.id),
         resource_count=rc,
         status_report_count=src,
         sub_project_count=len(children),
         sub_projects=_sub_project_summaries(
-            db, children, {item.id for item in duplicate_resources}
+            db, children, {item.id for item in duplicate_resources}, tag_map
         ),
         duplicate_resources=duplicate_resources,
         created_at=project.created_at,
@@ -264,6 +289,7 @@ def _recent_reports(db: Session, project_id: int, limit: int) -> list[ProjectSta
 def _filtered_projects(
     q: str | None = None,
     group_id: int | None = None,
+    tag_id: int | None = None,
     parent_id: int | None = None,
     roots_only: bool = False,
 ):
@@ -278,13 +304,19 @@ def _filtered_projects(
         filters.append(Project.parent_id == parent_id)
     if group_id is not None:
         filters.append(Root.group_id == group_id)
+    if tag_id is not None:
+        filters.append(family_has_tag(tag_id) if roots_only else project_has_tag(tag_id))
     if q and q.strip():
         pattern = f"%{q.strip()}%"
+        tag_match = (
+            family_tag_name_matches(pattern) if roots_only else project_tag_name_matches(pattern)
+        )
         filters.append(
             or_(
                 Project.name.ilike(pattern),
                 Project.description.ilike(pattern),
                 Group.name.ilike(pattern),
+                tag_match,
             )
         )
     if filters:
@@ -295,6 +327,7 @@ def _filtered_projects(
 def _export_record(db: Session, project: Project, reports: int) -> ProjectExportRecord:
     children = _load_children(db, project.id)
     group = effective_group(db, project)
+    tag_map = tags_for_projects(db, [project.id, *[child.id for child in children]])
     return ProjectExportRecord(
         id=project.id,
         name=project.name,
@@ -302,6 +335,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
         group_id=group.id if group else None,
         group_name=group.name if group else None,
         status=ProjectLifecycle(project.status),
+        tags=_tag_names(tag_map, project.id),
         created_at=project.created_at,
         updated_at=project.updated_at,
         resources=list_assigned_resources(db, project.id),
@@ -316,6 +350,7 @@ def _export_record(db: Session, project: Project, reports: int) -> ProjectExport
                 name=child.name,
                 description=child.description,
                 status=ProjectLifecycle(child.status),
+                tags=_tag_names(tag_map, child.id),
                 created_at=child.created_at,
                 updated_at=child.updated_at,
                 resources=list_assigned_resources(db, child.id),
@@ -335,13 +370,18 @@ def list_projects(
     db: DbSession,
     q: str | None = None,
     group_id: int | None = None,
+    tag_id: int | None = None,
     parent_id: int | None = None,
     roots_only: bool = False,
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
 ) -> ProjectListResponse:
     stmt = _filtered_projects(
-        q=q, group_id=group_id, parent_id=parent_id, roots_only=roots_only
+        q=q,
+        group_id=group_id,
+        tag_id=tag_id,
+        parent_id=parent_id,
+        roots_only=roots_only,
     )
 
     count_stmt = select(func.count()).select_from(stmt.subquery())
@@ -377,10 +417,11 @@ def export_projects(
     db: DbSession,
     q: str | None = None,
     group_id: int | None = None,
+    tag_id: int | None = None,
     reports: int = Query(default=3, ge=0, le=100),
 ) -> Response:
     projects = db.scalars(
-        _filtered_projects(q=q, group_id=group_id, roots_only=True).order_by(
+        _filtered_projects(q=q, group_id=group_id, tag_id=tag_id, roots_only=True).order_by(
             latest_activity_order().desc(), Project.id.desc()
         )
     ).all()
@@ -428,10 +469,11 @@ def project_report(
     db: DbSession,
     q: str | None = None,
     group_id: int | None = None,
+    tag_id: int | None = None,
 ) -> ProjectReportResponse:
     """Root projects for the current filter, with people who are also on another project."""
     roots = db.scalars(
-        _filtered_projects(q=q, group_id=group_id, roots_only=True).order_by(
+        _filtered_projects(q=q, group_id=group_id, tag_id=tag_id, roots_only=True).order_by(
             latest_activity_order().desc(), Project.id.desc()
         )
     ).all()
@@ -499,6 +541,7 @@ def project_report(
                 if project_id in members:
                     members[project_id].add(resource_id)
     latest_status = _latest_status_reports(db, all_ids)
+    tag_map = tags_for_projects(db, all_ids)
     items: list[tuple[tuple[int | None, str], set[int], ReportProject]] = []
     for root in roots:
         children = sorted(
@@ -519,6 +562,7 @@ def project_report(
                 description=root.description,
                 group_name=group.name if group else None,
                 status=ProjectLifecycle(root.status),
+                tags=_tag_names(tag_map, root.id),
                 latest_status=latest_status[root.id][0] if root.id in latest_status else None,
                 latest_status_at=latest_status[root.id][1] if root.id in latest_status else None,
                 resource_count=len(member_ids),
@@ -532,6 +576,7 @@ def project_report(
                         name=child.name,
                         description=child.description,
                         status=ProjectLifecycle(child.status),
+                        tags=_tag_names(tag_map, child.id),
                         latest_status=latest_status[child.id][0] if child.id in latest_status else None,
                         latest_status_at=latest_status[child.id][1] if child.id in latest_status else None,
                         resource_count=len(members.get(child.id, set())),
@@ -590,6 +635,7 @@ def create_root_project(
     db.flush()
     project.root_project_id = project.id
     assign_root_group(db, project, payload.group_name)
+    set_project_tags(db, project, payload.tags)
     db.commit()
     db.refresh(project)
     response.headers["Location"] = f"/api/projects/{project.id}"
@@ -611,6 +657,7 @@ def create_sub_project(
     )
     db.add(project)
     db.flush()
+    set_project_tags(db, project, payload.tags)
     touch_project(db, parent)
     db.commit()
     db.refresh(project)
@@ -662,9 +709,10 @@ def get_project(
         parent = db.get(Project, project.parent_id)
         parent_name = parent.name if parent else None
 
-    children = db.scalars(select(Project).where(Project.parent_id == project.id)).all()
+    children = list(db.scalars(select(Project).where(Project.parent_id == project.id)).all())
     assignments = list_assigned_resources(db, project.id)
     group = effective_group(db, project)
+    tag_map = tags_for_projects(db, [project.id, *[child.id for child in children]])
 
     recent: list[ProjectStatusReport] = []
     if recent_status_count is not None:
@@ -682,11 +730,12 @@ def get_project(
         group_name=group.name if group else None,
         group_icon_url=group_icon_url(group),
         status=ProjectLifecycle(project.status),
+        tags=_tag_refs(tag_map, project.id),
         resources=assignments,
-        sub_projects=_sub_project_summaries(db, list(children)),
+        sub_projects=_sub_project_summaries(db, children, tag_map=tag_map),
         recent_status_reports=[StatusReportRead.model_validate(r) for r in recent],
         created_at=project.created_at,
-        updated_at=last_activity_at(db, project, list(children)),
+        updated_at=last_activity_at(db, project, children),
     )
 
 
@@ -728,6 +777,8 @@ def patch_project(project_id: int, payload: ProjectPatch, db: DbSession) -> Proj
         project.description = data["description"]
     if "status" in data and data["status"] is not None:
         project.status = data["status"].value
+    if "tags" in data and data["tags"] is not None:
+        set_project_tags(db, project, data["tags"])
 
     touch_project(db, project)
     db.commit()

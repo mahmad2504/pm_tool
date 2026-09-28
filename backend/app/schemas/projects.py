@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.roles import ProjectLifecycle, ProjectRole
 from app.schemas.resources import ResourceRead
+from app.services.tags import normalize_tag_list
 
 
 def trim_optional_description(value: str | None) -> str | None:
@@ -13,11 +14,21 @@ def trim_optional_description(value: str | None) -> str | None:
     return stripped if stripped else None
 
 
+class TagRef(BaseModel):
+    id: int
+    name: str
+
+
+class TagRead(TagRef):
+    project_count: int
+
+
 class ProjectCreateRoot(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     group_name: str = Field(min_length=1, max_length=255)
     status: ProjectLifecycle = ProjectLifecycle.assessment
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -40,6 +51,11 @@ class ProjectCreateRoot(BaseModel):
     def trim_description(cls, value: str | None) -> str | None:
         return trim_optional_description(value)
 
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        return normalize_tag_list(value) or []
+
 
 class ProjectMove(BaseModel):
     parent_id: int
@@ -49,6 +65,7 @@ class ProjectCreateSub(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     status: ProjectLifecycle = ProjectLifecycle.assessment
+    tags: list[str] = Field(default_factory=list)
 
     @field_validator("name")
     @classmethod
@@ -62,6 +79,11 @@ class ProjectCreateSub(BaseModel):
     @classmethod
     def trim_description(cls, value: str | None) -> str | None:
         return trim_optional_description(value)
+
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str]) -> list[str]:
+        return normalize_tag_list(value) or []
 
 
 class ProjectUpdateRoot(BaseModel):
@@ -96,6 +118,7 @@ class ProjectPatch(BaseModel):
     description: str | None = None
     group_name: str | None = Field(default=None, max_length=255)
     status: ProjectLifecycle | None = None
+    tags: list[str] | None = None
 
     @field_validator("name")
     @classmethod
@@ -122,6 +145,11 @@ class ProjectPatch(BaseModel):
     def trim_description(cls, value: str | None) -> str | None:
         return trim_optional_description(value)
 
+    @field_validator("tags")
+    @classmethod
+    def clean_tags(cls, value: list[str] | None) -> list[str] | None:
+        return normalize_tag_list(value)
+
 
 class SubProjectSummary(BaseModel):
     id: int
@@ -130,6 +158,7 @@ class SubProjectSummary(BaseModel):
     status: ProjectLifecycle
     resource_count: int = 0
     shared_count: int = 0
+    tags: list[TagRef] = []
 
 
 class DuplicateResource(BaseModel):
@@ -149,6 +178,7 @@ class ProjectSummary(BaseModel):
     group_id: int | None = None
     group_icon_url: str | None = None
     status: ProjectLifecycle
+    tags: list[TagRef] = []
     resource_count: int
     status_report_count: int
     sub_project_count: int
@@ -182,6 +212,7 @@ class ReportSubProject(BaseModel):
     name: str
     description: str | None
     status: ProjectLifecycle
+    tags: list[str] = []
     latest_status: str | None
     latest_status_at: datetime | None
     resource_count: int
@@ -195,6 +226,7 @@ class ReportProject(BaseModel):
     description: str | None
     group_name: str | None
     status: ProjectLifecycle
+    tags: list[str] = []
     latest_status: str | None
     latest_status_at: datetime | None
     resource_count: int
@@ -229,6 +261,7 @@ class ProjectDetail(BaseModel):
     group_name: str | None
     group_icon_url: str | None = None
     status: ProjectLifecycle
+    tags: list[TagRef] = []
     resources: list["AssignedResourceRead"]
     sub_projects: list[SubProjectSummary]
     recent_status_reports: list["StatusReportRead"] = []
@@ -312,6 +345,7 @@ class ProjectExportSubProject(BaseModel):
     name: str
     description: str | None
     status: ProjectLifecycle
+    tags: list[str] = []
     created_at: datetime
     updated_at: datetime
     resources: list[AssignedResourceRead]
@@ -326,6 +360,7 @@ class ProjectExportRecord(BaseModel):
     group_id: int | None
     group_name: str | None
     status: ProjectLifecycle
+    tags: list[str] = []
     created_at: datetime
     updated_at: datetime
     resources: list[AssignedResourceRead]

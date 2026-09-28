@@ -21,6 +21,7 @@ import {
   groupIconSrc,
   listAllResources,
   listStatusReports,
+  listTags,
   patchProject,
   updateProjectResourceOnboarded,
   updateProjectResourceRole,
@@ -30,6 +31,7 @@ import {
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { OnboardedIcon } from "../components/OnboardedIcon";
 import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
+import { TagChips, TagEditor, tagsWithDraft } from "../components/TagEditor";
 import { AppShell } from "../layout/AppShell";
 import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import {
@@ -160,7 +162,12 @@ export function ProjectDetailPage() {
     name: "",
     description: "",
     status: "assessment" as ProjectStatus,
+    tags: [] as string[],
   });
+  const [tagSuggestions, setTagSuggestions] = useState<string[]>([]);
+  const [tagsSaving, setTagsSaving] = useState(false);
+  const subTagDraft = useRef<string | null>("");
+  const [subTagKey, setSubTagKey] = useState(0);
   const [reportBody, setReportBody] = useState("");
   const [reportAt, setReportAt] = useState(currentDatetimeLocalValue);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -195,6 +202,9 @@ export function ProjectDetailPage() {
         return;
       }
       setReports({ items: rep.items, total: rep.total });
+      listTags()
+        .then((items) => setTagSuggestions(items.map((tag) => tag.name)))
+        .catch(() => setTagSuggestions([]));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load project");
     }
@@ -210,6 +220,20 @@ export function ProjectDetailPage() {
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update status");
+    }
+  }
+
+  async function saveTags(next: string[]) {
+    if (!project) return;
+    setTagsSaving(true);
+    setError(null);
+    try {
+      await patchProject(project.id, { tags: next });
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to update tags");
+    } finally {
+      setTagsSaving(false);
     }
   }
 
@@ -245,8 +269,11 @@ export function ProjectDetailPage() {
         name: subForm.name.trim(),
         description: subForm.description.trim() || null,
         status: subForm.status,
+        tags: tagsWithDraft(subForm.tags, subTagDraft.current ?? ""),
       });
-      setSubForm({ name: "", description: "", status: "assessment" });
+      setSubForm({ name: "", description: "", status: "assessment", tags: [] });
+      subTagDraft.current = "";
+      setSubTagKey((key) => key + 1);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to add sub-project");
@@ -528,6 +555,20 @@ export function ProjectDetailPage() {
             Save details
           </button>
         </form>
+        <div className="detail-tags">
+          <h3>Tags</h3>
+          <TagEditor
+            tags={project.tags.map((tag) => tag.name)}
+            suggestions={tagSuggestions}
+            onChange={(next) => void saveTags(next)}
+            disabled={tagsSaving}
+          />
+          <p className="muted">
+            {project.is_root
+              ? "Filtering by a tag includes this project when the tag is on it or on a sub-project."
+              : "Filtering by a tag includes the root project when the tag is on this sub-project."}
+          </p>
+        </div>
         {!project.is_root && project.parent_id != null && (
           <div className="sub-move">
             <MoveSubProjectControl
@@ -632,6 +673,7 @@ export function ProjectDetailPage() {
                   </svg>
                   <span>{s.resource_count}</span>
                 </span>
+                <TagChips tags={s.tags} />
                 <MoveSubProjectControl
                   subProjectId={s.id}
                   currentParentId={project.id}
@@ -672,6 +714,16 @@ export function ProjectDetailPage() {
             <button type="submit" className="btn btn--secondary">
               Add sub-project
             </button>
+            <div className="tag-field tag-field--full">
+              <span className="tag-field__label">Tags</span>
+              <TagEditor
+                key={subTagKey}
+                tags={subForm.tags}
+                suggestions={tagSuggestions}
+                onChange={(next) => setSubForm({ ...subForm, tags: next })}
+                draftRef={subTagDraft}
+              />
+            </div>
           </form>
         </section>
       )}

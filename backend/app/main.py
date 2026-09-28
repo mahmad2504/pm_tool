@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine, run_sqlite_migrations
-from app.routers import groups, projects, resources, roles
+from app.routers import groups, projects, resources, roles, tags
 
 
 @asynccontextmanager
@@ -42,6 +42,7 @@ app.add_middleware(
 app.include_router(roles.router)
 app.include_router(resources.router)
 app.include_router(groups.router)
+app.include_router(tags.router)
 app.include_router(projects.router)
 
 

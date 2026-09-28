@@ -207,6 +207,15 @@ export interface GroupItem {
   icon_url: string | null;
 }
 
+export interface TagRef {
+  id: number;
+  name: string;
+}
+
+export interface TagItem extends TagRef {
+  project_count: number;
+}
+
 export interface SubProjectSummary {
   id: number;
   name: string;
@@ -214,6 +223,7 @@ export interface SubProjectSummary {
   status: ProjectStatus;
   resource_count: number;
   shared_count?: number;
+  tags: TagRef[];
 }
 
 export interface DuplicateResource {
@@ -233,6 +243,7 @@ export interface ProjectSummary {
   group_id: number | null;
   group_icon_url: string | null;
   status: ProjectStatus;
+  tags: TagRef[];
   resource_count: number;
   status_report_count: number;
   sub_project_count: number;
@@ -262,11 +273,16 @@ export interface ProjectDetail {
   group_name: string | null;
   group_icon_url: string | null;
   status: ProjectStatus;
+  tags: TagRef[];
   resources: AssignedResource[];
   sub_projects: SubProjectSummary[];
   recent_status_reports: StatusReport[];
   created_at: string;
   updated_at: string;
+}
+
+export function listTags(): Promise<TagItem[]> {
+  return request("/api/tags");
 }
 
 export function listGroups(): Promise<GroupItem[]> {
@@ -347,12 +363,14 @@ export function downloadHtmlFile(html: string, filename: string): void {
 export async function downloadProjectsExport(params: {
   q?: string;
   group_id?: number;
+  tag_id?: number;
   reports: number;
   filename: string;
 }): Promise<void> {
   const search = new URLSearchParams();
   if (params.q) search.set("q", params.q);
   if (params.group_id) search.set("group_id", String(params.group_id));
+  if (params.tag_id) search.set("tag_id", String(params.tag_id));
   search.set("reports", String(params.reports));
   const response = await fetch(`${API_BASE}/api/projects/export?${search}`);
   if (!response.ok) {
@@ -388,6 +406,7 @@ export interface ReportSubProject {
   name: string;
   description: string | null;
   status: ProjectStatus;
+  tags: string[];
   latest_status: string | null;
   latest_status_at: string | null;
   resource_count: number;
@@ -411,6 +430,7 @@ export interface ReportProject {
   description: string | null;
   group_name: string | null;
   status: ProjectStatus;
+  tags: string[];
   latest_status: string | null;
   latest_status_at: string | null;
   resource_count: number;
@@ -422,10 +442,12 @@ export interface ReportProject {
 export function projectReport(params?: {
   q?: string;
   group_id?: number;
+  tag_id?: number;
 }): Promise<{ groups: ReportGroup[] }> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.group_id) search.set("group_id", String(params.group_id));
+  if (params?.tag_id) search.set("tag_id", String(params.tag_id));
   const query = search.toString();
   return request(`/api/projects/report${query ? `?${query}` : ""}`);
 }
@@ -433,6 +455,7 @@ export function projectReport(params?: {
 export function listProjects(params?: {
   q?: string;
   group_id?: number;
+  tag_id?: number;
   roots_only?: boolean;
   parent_id?: number;
   limit?: number;
@@ -441,6 +464,7 @@ export function listProjects(params?: {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.group_id) search.set("group_id", String(params.group_id));
+  if (params?.tag_id) search.set("tag_id", String(params.tag_id));
   if (params?.roots_only) search.set("roots_only", "true");
   if (params?.parent_id) search.set("parent_id", String(params.parent_id));
   if (params?.limit) search.set("limit", String(params.limit));
@@ -465,6 +489,7 @@ export function createRootProject(data: {
   description?: string | null;
   group_name: string;
   status: ProjectStatus;
+  tags?: string[];
 }): Promise<ProjectSummary> {
   return request("/api/projects", {
     method: "POST",
@@ -486,7 +511,7 @@ export function moveSubProject(
 
 export function createSubProject(
   parentId: number,
-  data: { name: string; description?: string | null; status?: ProjectStatus },
+  data: { name: string; description?: string | null; status?: ProjectStatus; tags?: string[] },
 ): Promise<ProjectSummary> {
   return request(`/api/projects/${parentId}/sub-projects`, {
     method: "POST",
@@ -502,6 +527,7 @@ export function patchProject(
     description?: string | null;
     group_name?: string;
     status?: ProjectStatus;
+    tags?: string[];
   },
 ): Promise<ProjectSummary> {
   return request(`/api/projects/${id}`, {

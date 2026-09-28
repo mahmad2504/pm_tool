@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, aliased
 from sqlalchemy.sql.functions import FunctionElement
 
 from app.models import Group, Project, ProjectStatusReport, utc_now
+from app.services.tags import delete_unused_tags, detach_project_tags
 
 def get_project_or_404(db: Session, project_id: int) -> Project:
     project = db.get(Project, project_id)
@@ -168,9 +169,11 @@ def delete_project_subtree(db: Session, project: Project) -> int | None:
         old_group_id = project.group_id
 
     subtree_ids = collect_subtree_ids(db, project.id)
+    detach_project_tags(db, subtree_ids)
     for pid in reversed(subtree_ids):
         p = db.get(Project, pid)
         if p:
             db.delete(p)
     db.flush()
+    delete_unused_tags(db)
     return old_group_id

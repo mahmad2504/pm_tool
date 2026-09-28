@@ -2,20 +2,27 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   GroupItem,
+  TagItem,
   ReportGroup,
   downloadHtmlFile,
   listGroups,
+  listTags,
   portfolioReportFilename,
   projectReport,
 } from "../api";
 import { AppShell } from "../layout/AppShell";
 import { buildProjectReportHtml } from "../reportHtml";
 
-export function projectReportPath(query: string, groupId: number | ""): string {
+export function projectReportPath(
+  query: string,
+  groupId: number | "",
+  tagId: number | "" = "",
+): string {
   const params = new URLSearchParams();
   const q = query.trim();
   if (q) params.set("q", q);
   if (groupId) params.set("group", String(groupId));
+  if (tagId) params.set("tag", String(tagId));
   const search = params.toString();
   return search ? `/report?${search}` : "/report";
 }
@@ -30,8 +37,10 @@ export function ReportPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const q = searchParams.get("q") ?? "";
   const groupFilter = groupIdFromParam(searchParams.get("group"));
+  const tagFilter = groupIdFromParam(searchParams.get("tag"));
   const [searchInput, setSearchInput] = useState(q);
   const [groups, setGroups] = useState<GroupItem[] | null>(null);
+  const [tags, setTags] = useState<TagItem[] | null>(null);
   const [reportGroups, setReportGroups] = useState<ReportGroup[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,6 +48,7 @@ export function ReportPage() {
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
+    listTags().then(setTags).catch(() => setTags([]));
   }, []);
 
   useEffect(() => {
@@ -70,6 +80,7 @@ export function ReportPage() {
     projectReport({
       q: q || undefined,
       group_id: groupFilter || undefined,
+      tag_id: tagFilter || undefined,
     })
       .then((data) => {
         if (!cancelled) setReportGroups(data.groups);
@@ -86,9 +97,9 @@ export function ReportPage() {
     return () => {
       cancelled = true;
     };
-  }, [q, groupFilter]);
+  }, [q, groupFilter, tagFilter]);
 
-  const filterLabel = filterText(groups, q, groupFilter);
+  const filterLabel = filterText(groups, tags, q, groupFilter, tagFilter);
   const html = useMemo(() => {
     if (!groups || !reportGroups) return null;
     return buildProjectReportHtml(reportGroups, `Filter: ${filterLabel}`);
@@ -100,6 +111,18 @@ export function ReportPage() {
         const params = new URLSearchParams(prev);
         if (value) params.set("group", value);
         else params.delete("group");
+        return params;
+      },
+      { replace: true },
+    );
+  }
+
+  function changeTag(value: string) {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev);
+        if (value) params.set("tag", value);
+        else params.delete("tag");
         return params;
       },
       { replace: true },
@@ -122,8 +145,8 @@ export function ReportPage() {
         <div>
           <h1>Project report</h1>
           <p className="subtitle">
-            Portfolio view of projects, people, and the latest status. Search and group stay in
-            the address, so this page can be opened directly.
+            Portfolio view of projects, people, and the latest status. Search, group, and tag stay
+            in the address, so this page can be opened directly.
           </p>
         </div>
         <button
@@ -152,13 +175,14 @@ export function ReportPage() {
           </span>
           <input
             className="search-input"
-            placeholder="Search name, description, or group…"
+            placeholder="Search name, description, group, or tag…"
             value={searchInput}
             onChange={(event) => setSearchInput(event.target.value)}
           />
         </div>
         <select
           className="filter-select"
+          aria-label="Filter by group"
           value={groupFilter}
           onChange={(event) => changeGroup(event.target.value)}
         >
@@ -166,6 +190,19 @@ export function ReportPage() {
           {(groups ?? []).map((group) => (
             <option key={group.id} value={group.id}>
               {group.name} ({group.project_count})
+            </option>
+          ))}
+        </select>
+        <select
+          className="filter-select"
+          aria-label="Filter by tag"
+          value={tagFilter}
+          onChange={(event) => changeTag(event.target.value)}
+        >
+          <option value="">All tags</option>
+          {(tags ?? []).map((tag) => (
+            <option key={tag.id} value={tag.id}>
+              {tag.name} ({tag.project_count})
             </option>
           ))}
         </select>
@@ -179,9 +216,16 @@ export function ReportPage() {
   );
 }
 
-function filterText(groups: GroupItem[] | null, query: string, groupId: number | ""): string {
+function filterText(
+  groups: GroupItem[] | null,
+  tags: TagItem[] | null,
+  query: string,
+  groupId: number | "",
+  tagId: number | "",
+): string {
   const groupName = groupId
     ? (groups?.find((group) => group.id === groupId)?.name ?? "group")
     : "all groups";
-  return query ? `${groupName} ${query}` : groupName;
+  const tagName = tagId ? (tags?.find((tag) => tag.id === tagId)?.name ?? "tag") : "";
+  return [groupName, tagName, query].filter(Boolean).join(" ");
 }

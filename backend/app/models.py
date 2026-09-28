@@ -48,6 +48,29 @@ class Group(Base):
     )
 
 
+class Tag(Base):
+    __tablename__ = "tags"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+
+    projects: Mapped[list["Project"]] = relationship(
+        secondary="project_tags", back_populates="tags"
+    )
+
+
+class ProjectTag(Base):
+    __tablename__ = "project_tags"
+    __table_args__ = (UniqueConstraint("project_id", "tag_id", name="uq_project_tag"),)
+
+    project_id: Mapped[int] = mapped_column(
+        ForeignKey("projects.id", ondelete="CASCADE"), primary_key=True
+    )
+    tag_id: Mapped[int] = mapped_column(
+        ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True
+    )
+
+
 class Project(Base):
     __tablename__ = "projects"
 
@@ -88,6 +111,9 @@ class Project(Base):
     )
     resources: Mapped[list["Resource"]] = relationship(
         secondary="project_resources", back_populates="projects"
+    )
+    tags: Mapped[list["Tag"]] = relationship(
+        secondary="project_tags", back_populates="projects"
     )
     status_reports: Mapped[list["ProjectStatusReport"]] = relationship(
         back_populates="project",

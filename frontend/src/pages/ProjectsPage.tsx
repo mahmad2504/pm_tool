@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   GroupItem,
@@ -7,6 +7,7 @@ import {
   StatusReport,
   PROJECT_STATUSES,
   ProjectStatus,
+  TagItem,
   createRootProject,
   createStatusReport,
   downloadProjectsExport,
@@ -16,6 +17,7 @@ import {
   listGroups,
   listProjects,
   listStatusReports,
+  listTags,
   patchProject,
   updateGroup,
   updateStatusReport,
@@ -24,6 +26,7 @@ import {
 import { OnboardedIcon } from "../components/OnboardedIcon";
 import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
 import { PeopleNameHover, SubProjectPeopleHint } from "../components/SubProjectPeopleHint";
+import { TagChips, TagEditor, tagsWithDraft } from "../components/TagEditor";
 import { AppShell } from "../layout/AppShell";
 import { projectReportPath } from "./ReportPage";
 import { formatUpdated } from "../reportHtml";
@@ -67,9 +70,11 @@ export function ProjectsPage() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [tags, setTags] = useState<TagItem[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<number | "">("");
+  const [tagFilter, setTagFilter] = useState<number | "">("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [peopleTarget, setPeopleTarget] = useState<ProjectSummary | null>(null);
@@ -103,6 +108,7 @@ export function ProjectsPage() {
     description: "",
     group_name: "",
     status: "assessment" as ProjectStatus,
+    tags: [] as string[],
   });
   const [groupMode, setGroupMode] = useState<"existing" | "new">("new");
   const [groupEditor, setGroupEditor] = useState<GroupItem | null>(null);
@@ -114,9 +120,11 @@ export function ProjectsPage() {
   const [exportReports, setExportReports] = useState("3");
   const [exportFileName, setExportFileName] = useState("");
   const [exporting, setExporting] = useState(false);
+  const createTagDraft = useRef<string | null>("");
 
   useEffect(() => {
     listGroups().then(setGroups).catch(() => setGroups([]));
+    listTags().then(setTags).catch(() => setTags([]));
   }, []);
 
   useEffect(() => {
@@ -131,6 +139,7 @@ export function ProjectsPage() {
       const data = await listProjects({
         q: search.trim() || undefined,
         group_id: groupFilter || undefined,
+        tag_id: tagFilter || undefined,
         roots_only: true,
       });
       setProjects(data.items);
@@ -140,7 +149,7 @@ export function ProjectsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, groupFilter]);
+  }, [search, groupFilter, tagFilter]);
 
   useEffect(() => {
     void load();
@@ -314,10 +323,12 @@ export function ProjectsPage() {
         listProjects({
           q: search.trim() || undefined,
           group_id: groupFilter || undefined,
+          tag_id: tagFilter || undefined,
           roots_only: true,
         }),
       ]);
       setGroups(nextGroups);
+      setTags(await listTags());
       setProjects(data.items);
       setTotal(data.total);
     } catch (err) {
@@ -331,8 +342,9 @@ export function ProjectsPage() {
     const groupName = groupFilter
       ? (groups.find((group) => group.id === groupFilter)?.name ?? "group")
       : "all groups";
+    const tagName = tagFilter ? (tags.find((tag) => tag.id === tagFilter)?.name ?? "tag") : "";
     const query = search.trim();
-    return query ? `${groupName} ${query}` : groupName;
+    return [groupName, tagName, query].filter(Boolean).join(" ");
   }
 
   function openExport() {
@@ -360,6 +372,7 @@ export function ProjectsPage() {
       await downloadProjectsExport({
         q: search.trim() || undefined,
         group_id: groupFilter || undefined,
+        tag_id: tagFilter || undefined,
         reports,
         filename: downloadName,
       });
@@ -381,12 +394,14 @@ export function ProjectsPage() {
         description: form.description.trim() || null,
         group_name: form.group_name.trim(),
         status: form.status,
+        tags: tagsWithDraft(form.tags, createTagDraft.current ?? ""),
       });
       setModalOpen(false);
-      setForm({ name: "", description: "", group_name: "", status: "assessment" });
+      setForm({ name: "", description: "", group_name: "", status: "assessment", tags: [] });
       setGroupMode(groups.length > 0 ? "existing" : "new");
       await load();
       listGroups().then(setGroups).catch(() => {});
+      listTags().then(setTags).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Create failed");
     } finally {
@@ -395,7 +410,7 @@ export function ProjectsPage() {
   }
 
   function openCreate() {
-    setForm({ name: "", description: "", group_name: "", status: "assessment" });
+    setForm({ name: "", description: "", group_name: "", status: "assessment", tags: [] });
     setGroupMode(groups.length > 0 ? "existing" : "new");
     setModalOpen(true);
     listGroups()
@@ -412,7 +427,8 @@ export function ProjectsPage() {
         <div>
           <h1>Projects</h1>
           <p className="subtitle">
-            Every root project belongs to a group. Sub-projects inherit that group.
+            Every root project belongs to a group. Add tags on a project or sub-project, then
+            filter this list by group or tag.
           </p>
         </div>
         <button type="button" className="btn btn--primary" onClick={openCreate}>
@@ -437,13 +453,14 @@ export function ProjectsPage() {
             </span>
             <input
               className="search-input"
-              placeholder="Search name, description, or group…"
+              placeholder="Search name, description, group, or tag…"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
             />
           </div>
           <select
             className="filter-select"
+            aria-label="Filter by group"
             value={groupFilter}
             onChange={(e) =>
               setGroupFilter(e.target.value ? Number(e.target.value) : "")
@@ -456,7 +473,20 @@ export function ProjectsPage() {
               </option>
             ))}
           </select>
-          <Link className="btn btn--secondary" to={projectReportPath(search, groupFilter)}>
+          <select
+            className="filter-select"
+            aria-label="Filter by tag"
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value ? Number(e.target.value) : "")}
+          >
+            <option value="">All tags</option>
+            {tags.map((tag) => (
+              <option key={tag.id} value={tag.id}>
+                {tag.name} ({tag.project_count})
+              </option>
+            ))}
+          </select>
+          <Link className="btn btn--secondary" to={projectReportPath(search, groupFilter, tagFilter)}>
             Report
           </Link>
           <button
@@ -477,11 +507,20 @@ export function ProjectsPage() {
           </div>
         ) : projects.length === 0 ? (
           <div className="empty-state">
-            <h2>No projects yet</h2>
-            <p>Create a root project to get started.</p>
-            <button type="button" className="btn btn--primary" onClick={openCreate}>
-              Create project
-            </button>
+            {search.trim() || groupFilter || tagFilter ? (
+              <>
+                <h2>No matching projects</h2>
+                <p>Nothing matches the current search, group, or tag.</p>
+              </>
+            ) : (
+              <>
+                <h2>No projects yet</h2>
+                <p>Create a root project to get started.</p>
+                <button type="button" className="btn btn--primary" onClick={openCreate}>
+                  Create project
+                </button>
+              </>
+            )}
           </div>
         ) : (
           <ul className="resource-grid">
@@ -553,6 +592,13 @@ export function ProjectsPage() {
                 <p className="project-card__description">
                   {p.description || "No description"}
                 </p>
+                <TagChips
+                  tags={p.tags}
+                  activeId={tagFilter}
+                  onSelect={(tagId) =>
+                    setTagFilter((current) => (current === tagId ? "" : tagId))
+                  }
+                />
                 {p.sub_projects.length > 0 && (
                   <ul className="project-card__subs">
                     {p.sub_projects.map((sub) => (
@@ -566,6 +612,13 @@ export function ProjectsPage() {
                             />
                           )}
                         </Link>
+                        <TagChips
+                          tags={sub.tags}
+                          activeId={tagFilter}
+                          onSelect={(tagId) =>
+                            setTagFilter((current) => (current === tagId ? "" : tagId))
+                          }
+                        />
                       </li>
                     ))}
                   </ul>
@@ -602,9 +655,9 @@ export function ProjectsPage() {
               </button>
             </header>
             <p className="modal__message">
-              Exports {total} root project{total === 1 ? "" : "s"} matching the current search and
-              group filter. Each project is one JSONL line, with people, sub-projects, and the
-              latest status reports.
+              Exports {total} root project{total === 1 ? "" : "s"} matching the current search,
+              group, and tag filters. Each project is one JSONL line, with people, sub-projects,
+              tags, and the latest status reports.
             </p>
             <form className="modal__form" onSubmit={(event) => void runExport(event)}>
               <label>
@@ -927,6 +980,16 @@ export function ProjectsPage() {
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                 />
               </label>
+              <div className="tag-field">
+                <span className="tag-field__label">Tags</span>
+                <TagEditor
+                  tags={form.tags}
+                  suggestions={tags.map((tag) => tag.name)}
+                  onChange={(next) => setForm({ ...form, tags: next })}
+                  disabled={saving}
+                  draftRef={createTagDraft}
+                />
+              </div>
               <footer className="modal__footer">
                 <button type="button" className="btn btn--ghost" onClick={() => setModalOpen(false)}>
                   Cancel
