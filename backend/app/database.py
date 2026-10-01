@@ -83,6 +83,17 @@ def run_sqlite_migrations() -> None:
                 conn.execute(text("ALTER TABLE projects ADD COLUMN chat_url VARCHAR(2048)"))
 
 
+def ensure_resource_location_column() -> None:
+    inspector = inspect(engine)
+    if "resources" not in inspector.get_table_names():
+        return
+    columns = {col["name"] for col in inspector.get_columns("resources")}
+    if "location" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE resources ADD COLUMN location VARCHAR(8)"))
+
+
 def ensure_chat_url_column() -> None:
     if DATABASE_URL.startswith("sqlite"):
         return

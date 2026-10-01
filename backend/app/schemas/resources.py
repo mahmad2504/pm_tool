@@ -2,7 +2,20 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.locations import ResourceLocation, parse_location
 from app.roles import ProjectRole, ResourceRole, parse_role
+
+
+def normalize_location(value: object) -> ResourceLocation | None:
+    if value is None or isinstance(value, ResourceLocation):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    parsed = parse_location(text)
+    if parsed is None:
+        raise ValueError("Location must be KHI, ISB, or LHR")
+    return parsed
 
 
 def normalize_notes(value: str | None) -> str | None:
@@ -16,6 +29,7 @@ class ResourceBase(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     role: ResourceRole
     email: EmailStr
+    location: ResourceLocation | None = None
     notes: str | None = None
 
     @field_validator("name")
@@ -36,6 +50,11 @@ class ResourceBase(BaseModel):
     def clean_notes(cls, value: str | None) -> str | None:
         return normalize_notes(value)
 
+    @field_validator("location", mode="before")
+    @classmethod
+    def clean_location(cls, value: object) -> ResourceLocation | None:
+        return normalize_location(value)
+
 
 class ResourceCreate(ResourceBase):
     pass
@@ -49,6 +68,7 @@ class ResourcePatch(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=255)
     role: ResourceRole | None = None
     email: EmailStr | None = None
+    location: ResourceLocation | None = None
     notes: str | None = None
 
     @field_validator("name")
@@ -72,6 +92,11 @@ class ResourcePatch(BaseModel):
     @classmethod
     def clean_notes(cls, value: str | None) -> str | None:
         return normalize_notes(value)
+
+    @field_validator("location", mode="before")
+    @classmethod
+    def clean_location(cls, value: object) -> ResourceLocation | None:
+        return normalize_location(value)
 
 
 class ResourceRead(ResourceBase):
@@ -100,6 +125,7 @@ class ResourceWithUtilization(ResourceRead):
 class ResourceListResponse(BaseModel):
     items: list[ResourceWithUtilization]
     total: int
+    role_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class ImportErrorItem(BaseModel):
@@ -122,6 +148,7 @@ class CsvRowInput(BaseModel):
     name: str
     role: ResourceRole
     email: EmailStr
+    location: ResourceLocation | None = None
     notes: str | None = None
 
     @classmethod
@@ -131,6 +158,7 @@ class CsvRowInput(BaseModel):
         role_raw: str,
         email: str,
         notes: str,
+        location_raw: str = "",
     ) -> "CsvRowInput":
         if not name.strip():
             raise ValueError("Name is required")
@@ -143,5 +171,6 @@ class CsvRowInput(BaseModel):
             name=name.strip(),
             role=role,
             email=email.strip().lower(),
+            location=normalize_location(location_raw),
             notes=normalize_notes(notes) if notes else None,
         )

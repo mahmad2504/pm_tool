@@ -1,6 +1,20 @@
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
-export type ResourceRole = "software_engineer" | "hardware_engineer" | "lead";
+export type ResourceRole =
+  | "software_engineer"
+  | "it_engineer"
+  | "hardware_engineer"
+  | "analog_design_engineer"
+  | "pd_engineer"
+  | "lead";
+
+export type ResourceLocation = "KHI" | "ISB" | "LHR";
+
+export const RESOURCE_LOCATIONS: { code: ResourceLocation; label: string }[] = [
+  { code: "KHI", label: "KHI" },
+  { code: "ISB", label: "ISB" },
+  { code: "LHR", label: "LHR" },
+];
 
 export type ProjectRole =
   | "member"
@@ -62,6 +76,7 @@ export interface Resource {
   name: string;
   role: ResourceRole;
   email: string;
+  location: ResourceLocation | null;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -72,12 +87,14 @@ export interface Resource {
 export interface ResourceListResponse {
   items: Resource[];
   total: number;
+  role_counts?: Record<string, number>;
 }
 
 export interface ResourceInput {
   name: string;
   role: ResourceRole;
   email: string;
+  location: ResourceLocation | null;
   notes: string | null;
 }
 
@@ -120,6 +137,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export function listResources(params?: {
   q?: string;
   role?: ResourceRole;
+  location?: ResourceLocation;
   project_id?: number;
   limit?: number;
   offset?: number;
@@ -129,6 +147,7 @@ export function listResources(params?: {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.role) search.set("role", params.role);
+  if (params?.location) search.set("location", params.location);
   if (params?.project_id) search.set("project_id", String(params.project_id));
   if (params?.limit) search.set("limit", String(params.limit));
   if (params?.offset) search.set("offset", String(params.offset));
@@ -136,6 +155,21 @@ export function listResources(params?: {
   if (params?.sort) search.set("sort", params.sort);
   const query = search.toString();
   return request(`/api/resources${query ? `?${query}` : ""}`);
+}
+
+export function resourceReport(params?: {
+  q?: string;
+  role?: ResourceRole;
+  location?: ResourceLocation;
+  project_id?: number;
+}): Promise<ResourceListResponse> {
+  const search = new URLSearchParams();
+  if (params?.q) search.set("q", params.q);
+  if (params?.role) search.set("role", params.role);
+  if (params?.location) search.set("location", params.location);
+  if (params?.project_id) search.set("project_id", String(params.project_id));
+  const query = search.toString();
+  return request(`/api/resources/report${query ? `?${query}` : ""}`);
 }
 
 export async function listAllResources(params?: {
@@ -198,6 +232,42 @@ export async function importResources(file: File): Promise<ImportResult> {
 
 export function templateCsvUrl(): string {
   return `${API_BASE}/api/resources/import/template`;
+}
+
+export function resourcesExportFilename(now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  return `people ${stamp}.csv`;
+}
+
+export async function downloadResourcesExport(params: {
+  q?: string;
+  role?: ResourceRole;
+  location?: ResourceLocation;
+  project_id?: number;
+  filename: string;
+}): Promise<void> {
+  const search = new URLSearchParams();
+  if (params.q) search.set("q", params.q);
+  if (params.role) search.set("role", params.role);
+  if (params.location) search.set("location", params.location);
+  if (params.project_id) search.set("project_id", String(params.project_id));
+  const query = search.toString();
+  const response = await fetch(`${API_BASE}/api/resources/export${query ? `?${query}` : ""}`);
+  if (!response.ok) {
+    throw new Error(await parseError(response));
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = params.filename.toLowerCase().endsWith(".csv")
+    ? params.filename
+    : `${params.filename}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 export interface GroupItem {
@@ -352,6 +422,20 @@ export function portfolioReportFilename(
       .replace(/\s+/g, " ")
       .trim() || "all groups";
   return `portfolio-report ${stamp} ${safe}.html`;
+}
+
+export function resourceReportFilename(
+  filterLabel: string,
+  now = new Date(),
+): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  const safe =
+    filterLabel
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "all people";
+  return `resource-report ${stamp} ${safe}.html`;
 }
 
 export function downloadHtmlFile(html: string, filename: string): void {

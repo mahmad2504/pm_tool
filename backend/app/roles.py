@@ -3,13 +3,19 @@ from enum import Enum
 
 class ResourceRole(str, Enum):
     software_engineer = "software_engineer"
+    it_engineer = "it_engineer"
     hardware_engineer = "hardware_engineer"
+    analog_design_engineer = "analog_design_engineer"
+    pd_engineer = "pd_engineer"
     lead = "lead"
 
 
 ROLE_LABELS: dict[ResourceRole, str] = {
     ResourceRole.software_engineer: "Software engineer",
+    ResourceRole.it_engineer: "IT engineer",
     ResourceRole.hardware_engineer: "Hardware engineer",
+    ResourceRole.analog_design_engineer: "Analog design engineer",
+    ResourceRole.pd_engineer: "PD engineer",
     ResourceRole.lead: "Lead",
 }
 

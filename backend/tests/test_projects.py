@@ -635,6 +635,66 @@ def test_project_report_includes_latest_status_time(client):
     assert project["latest_status_at"].startswith("2026-01-01T12:00:00")
 
 
+def test_project_report_omits_completed_projects_and_assignments(client, db_session):
+    live = create_root(client, name="Live", group_name="Platform").json()
+    ongoing = client.post(
+        f"/api/projects/{live['id']}/sub-projects",
+        json={"name": "Ongoing"},
+    ).json()
+    retired = client.post(
+        f"/api/projects/{live['id']}/sub-projects",
+        json={"name": "Retired", "status": "completed"},
+    ).json()
+    finished = create_root(
+        client, name="Finished", group_name="Archive", status="completed"
+    ).json()
+    leftover = client.post(
+        f"/api/projects/{finished['id']}/sub-projects",
+        json={"name": "Leftover", "status": "in_progress"},
+    ).json()
+    db_session.add_all(
+        [
+            Resource(name="Ada", role="software_engineer", email="ada@example.com"),
+            Resource(name="Bea", role="lead", email="bea@example.com"),
+        ]
+    )
+    db_session.commit()
+    for project_id, resource_id in (
+        (live["id"], 1),
+        (retired["id"], 1),
+        (finished["id"], 1),
+        (leftover["id"], 1),
+        (finished["id"], 2),
+        (retired["id"], 2),
+    ):
+        assert (
+            client.post(
+                f"/api/projects/{project_id}/resources",
+                json={"resource_id": resource_id, "utilization_percent": 40},
+            ).status_code
+            == 201
+        )
+
+    report = client.get("/api/projects/report")
+    assert report.status_code == 200
+    groups = report.json()["groups"]
+    assert [group["name"] for group in groups] == ["Platform"]
+    group = groups[0]
+    assert group["project_count"] == 1
+    assert group["resource_count"] == 1
+    assert [person["name"] for person in group["resources"]] == ["Ada"]
+    assert group["shared_with_other_groups"] == []
+    assert [project["name"] for project in group["projects"]] == ["Live"]
+
+    project = group["projects"][0]
+    assert [sub["name"] for sub in project["sub_projects"]] == ["Ongoing"]
+    assert project["sub_projects"][0]["id"] == ongoing["id"]
+    assert project["resource_count"] == 1
+    assert [person["name"] for person in project["resources"]] == ["Ada"]
+    assert [item["project_name"] for item in project["resources"][0]["assignments"]] == ["Live"]
+    assert project["shared_resources"] == []
+
+
 def test_sub_project_summary_includes_latest_report_at(client):
     root = create_root(client, name="Parent", group_name="Platform").json()
     reported = client.post(

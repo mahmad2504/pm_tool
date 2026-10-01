@@ -52,11 +52,11 @@ SQLite database file: `backend/pm.db`
 
 ### CSV import (resources)
 
-Columns: `name`, `role`, `email`, `notes`
+Columns: `name`, `role`, `email`, `notes`, and optional `location` (`KHI`, `ISB`, or `LHR`). A blank location, or a file without that column, leaves the location unset.
 
 **Utilization** is set per project when assigning a person (`utilization_percent` 0–100 on `POST/PATCH .../resources`).
 
-Role may be a code (`software_engineer`, `hardware_engineer`, `lead`) or label (`Software engineer`, etc.).
+Role may be a code (`software_engineer`, `hardware_engineer`, `analog_design_engineer`, `pd_engineer`, `lead`) or label (`Software engineer`, etc.).
 
 ### Tests
 

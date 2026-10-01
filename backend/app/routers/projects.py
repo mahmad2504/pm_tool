@@ -481,17 +481,24 @@ def project_report(
     group_id: int | None = None,
     tag_id: int | None = None,
 ) -> ProjectReportResponse:
-    """Root projects for the current filter, with people who are also on another project."""
-    roots = db.scalars(
-        _filtered_projects(q=q, group_id=group_id, tag_id=tag_id, roots_only=True).order_by(
-            latest_activity_order().desc(), Project.id.desc()
-        )
-    ).all()
+    """Root projects for the current filter, excluding completed projects and their assignments."""
+    roots = [
+        project
+        for project in db.scalars(
+            _filtered_projects(q=q, group_id=group_id, tag_id=tag_id, roots_only=True).order_by(
+                latest_activity_order().desc(), Project.id.desc()
+            )
+        ).all()
+        if project.status != ProjectLifecycle.completed.value
+    ]
     root_ids = [project.id for project in roots]
     children_by_parent: dict[int, list[Project]] = {project_id: [] for project_id in root_ids}
     if root_ids:
         for child in db.scalars(select(Project).where(Project.parent_id.in_(root_ids))).all():
-            if child.parent_id is not None:
+            if (
+                child.parent_id is not None
+                and child.status != ProjectLifecycle.completed.value
+            ):
                 children_by_parent.setdefault(child.parent_id, []).append(child)
     all_ids = [
         project_id
@@ -526,7 +533,11 @@ def project_report(
                 .outerjoin(Parent, Parent.id == Project.parent_id)
                 .outerjoin(RootProject, RootProject.id == Project.root_project_id)
                 .outerjoin(Group, Group.id == RootProject.group_id)
-                .where(ProjectResource.resource_id.in_(resource_ids))
+                .where(
+                    ProjectResource.resource_id.in_(resource_ids),
+                    Project.status != ProjectLifecycle.completed.value,
+                    RootProject.status != ProjectLifecycle.completed.value,
+                )
                 .order_by(func.lower(Project.name), Project.id)
             ).all()
             for (

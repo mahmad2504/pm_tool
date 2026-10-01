@@ -3,21 +3,24 @@ import {
   FormEvent,
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from "react";
 import {
+  RESOURCE_LOCATIONS,
   Resource,
   ResourceInput,
+  ResourceLocation,
   ResourceRole,
   RoleItem,
   projectRoleLabel,
   createResource,
   deleteResource,
+  downloadResourcesExport,
   importResources,
   listProjects,
   listResources,
   listRoles,
+  resourcesExportFilename,
   ProjectSummary,
   templateCsvUrl,
   updateResource,
@@ -30,11 +33,15 @@ import { Link } from "react-router-dom";
 import { AppShell } from "../layout/AppShell";
 import { avatarHue, initials } from "../utils";
 import { projectListLabel } from "../utils/projectLabel";
+import { resourceReportPath } from "./ResourceReportPage";
+
+const PAGE_SIZE = 50;
 
 const emptyForm: ResourceInput = {
   name: "",
   role: "software_engineer",
   email: "",
+  location: null,
   notes: null,
 };
 
@@ -42,13 +49,59 @@ function roleLabel(roles: RoleItem[], code: ResourceRole): string {
   return roles.find((r) => r.code === code)?.label ?? code;
 }
 
+function ResourcePager({
+  page,
+  total,
+  loading,
+  onPage,
+}: {
+  page: number;
+  total: number;
+  loading: boolean;
+  onPage: (page: number) => void;
+}) {
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (total <= PAGE_SIZE) return null;
+  const from = page * PAGE_SIZE + 1;
+  const to = Math.min(total, (page + 1) * PAGE_SIZE);
+  return (
+    <nav className="resource-pager" aria-label="Resource pages">
+      <span>
+        {from}–{to} of {total}
+      </span>
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        disabled={loading || page === 0}
+        onClick={() => onPage(page - 1)}
+      >
+        Previous
+      </button>
+      <span>
+        Page {page + 1} of {pageCount}
+      </span>
+      <button
+        type="button"
+        className="btn btn--ghost btn--sm"
+        disabled={loading || page + 1 >= pageCount}
+        onClick={() => onPage(page + 1)}
+      >
+        Next
+      </button>
+    </nav>
+  );
+}
+
 export function ResourcesPage() {
   const [resources, setResources] = useState<Resource[]>([]);
   const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const [roleCounts, setRoleCounts] = useState<Record<string, number>>({});
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [filterRole, setFilterRole] = useState<ResourceRole | "">("");
+  const [filterLocation, setFilterLocation] = useState<ResourceLocation | "">("");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [filterProject, setFilterProject] = useState<number | "">("");
   const [form, setForm] = useState<ResourceInput>(emptyForm);
@@ -59,6 +112,7 @@ export function ResourcesPage() {
   const [importSummary, setImportSummary] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [importing, setImporting] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Resource | null>(null);
 
   useEffect(() => {
@@ -75,6 +129,13 @@ export function ResourcesPage() {
     return () => window.clearTimeout(timer);
   }, [searchInput]);
 
+  const filterKey = `${search}\0${filterRole}\0${filterLocation}\0${filterProject}`;
+  const [pagingFor, setPagingFor] = useState(filterKey);
+  if (pagingFor !== filterKey) {
+    setPagingFor(filterKey);
+    if (page !== 0) setPage(0);
+  }
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -82,30 +143,39 @@ export function ResourcesPage() {
       const list = await listResources({
         q: search.trim() || undefined,
         role: filterRole || undefined,
+        location: filterLocation || undefined,
         project_id: filterProject || undefined,
+        limit: PAGE_SIZE,
+        offset: page * PAGE_SIZE,
       });
+      const lastPage = Math.max(0, Math.ceil(list.total / PAGE_SIZE) - 1);
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       setResources(list.items);
       setTotal(list.total);
+      if (list.role_counts) {
+        setRoleCounts(list.role_counts);
+      } else {
+        const counts: Record<string, number> = {};
+        for (const item of list.items) {
+          counts[item.role] = (counts[item.role] ?? 0) + 1;
+        }
+        setRoleCounts(counts);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load resources");
     } finally {
       setLoading(false);
     }
-  }, [search, filterRole, filterProject]);
+  }, [search, filterRole, filterLocation, filterProject, page]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const roleCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    for (const r of resources) {
-      counts[r.role] = (counts[r.role] ?? 0) + 1;
-    }
-    return counts;
-  }, [resources]);
-
-  const hasFilters = Boolean(search.trim() || filterRole || filterProject);
+  const hasFilters = Boolean(search.trim() || filterRole || filterLocation || filterProject);
 
   function openCreateModal() {
     setEditingId(null);
@@ -120,6 +190,7 @@ export function ResourcesPage() {
       name: resource.name,
       role: resource.role,
       email: resource.email,
+      location: resource.location,
       notes: resource.notes,
     });
     setError(null);
@@ -147,7 +218,11 @@ export function ResourcesPage() {
         await updateResource(editingId, payload);
       }
       closeModal();
-      await load();
+      if (editingId === null && page !== 0) {
+        setPage(0);
+      } else {
+        await load();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
     } finally {
@@ -164,7 +239,26 @@ export function ResourcesPage() {
       setDeleteTarget(null);
       await load();
     } catch (err) {
+      setDeleteTarget(null);
       setError(err instanceof Error ? err.message : "Delete failed");
+    }
+  }
+
+  async function handleExport() {
+    setExporting(true);
+    setError(null);
+    try {
+      await downloadResourcesExport({
+        q: search.trim() || undefined,
+        role: filterRole || undefined,
+        location: filterLocation || undefined,
+        project_id: filterProject || undefined,
+        filename: resourcesExportFilename(),
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Export failed");
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -182,7 +276,11 @@ export function ResourcesPage() {
       setImportSummary(
         `Import complete: ${result.created} created, ${result.skipped} skipped.${errPart}`,
       );
-      await load();
+      if (page !== 0) {
+        setPage(0);
+      } else {
+        await load();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Import failed");
     } finally {
@@ -200,6 +298,20 @@ export function ResourcesPage() {
           </p>
         </div>
         <div className="header-actions">
+          <Link
+            className="btn btn--secondary"
+            to={resourceReportPath(searchInput, filterRole, filterProject, filterLocation)}
+          >
+            Report
+          </Link>
+          <button
+            type="button"
+            className="btn btn--secondary"
+            disabled={exporting}
+            onClick={() => void handleExport()}
+          >
+            {exporting ? "Exporting…" : "Export"}
+          </button>
           <label className={`btn btn--secondary ${importing ? "btn--loading" : ""}`}>
             {importing ? "Importing…" : "Import CSV"}
             <input
@@ -292,6 +404,19 @@ export function ResourcesPage() {
             ))}
           </select>
           <select
+            className="filter-select"
+            value={filterLocation}
+            onChange={(e) => setFilterLocation(e.target.value as ResourceLocation | "")}
+            aria-label="Filter by location"
+          >
+            <option value="">All locations</option>
+            {RESOURCE_LOCATIONS.map((location) => (
+              <option key={location.code} value={location.code}>
+                {location.label}
+              </option>
+            ))}
+          </select>
+          <select
             className="filter-select filter-select--wide"
             value={filterProject}
             onChange={(e) =>
@@ -307,6 +432,8 @@ export function ResourcesPage() {
             ))}
           </select>
         </div>
+
+        <ResourcePager page={page} total={total} loading={loading} onPage={setPage} />
 
         {loading ? (
           <div className="skeleton-grid" aria-busy="true" aria-label="Loading resources">
@@ -343,7 +470,12 @@ export function ResourcesPage() {
                   </div>
                   <div className="resource-card__meta">
                     <h3>{r.name}</h3>
-                    <RoleBadge role={r.role} displayLabel={roleLabel(roles, r.role)} />
+                    <div className="resource-card__tags">
+                      <RoleBadge role={r.role} displayLabel={roleLabel(roles, r.role)} />
+                      {r.location && (
+                        <span className="badge badge--location">{r.location}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
                   <a className="resource-card__email" href={`mailto:${r.email}`}>
@@ -407,6 +539,8 @@ export function ResourcesPage() {
             ))}
           </ul>
         )}
+
+        <ResourcePager page={page} total={total} loading={loading} onPage={setPage} />
       </section>
 
       <ResourceModal
@@ -423,14 +557,33 @@ export function ResourcesPage() {
       <ConfirmDialog
         open={deleteTarget !== null}
         title="Delete resource?"
+        confirmDisabled={(deleteTarget?.project_assignments?.length ?? 0) > 0}
         message={
           deleteTarget
-            ? `${deleteTarget.name} will be removed permanently. This cannot be undone.`
+            ? (deleteTarget.project_assignments?.length ?? 0) > 0
+              ? `${deleteTarget.name} is linked to the projects below. Remove those assignments before deleting this person.`
+              : `${deleteTarget.name} is not linked to any project and will be removed permanently.`
             : ""
         }
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => void confirmDelete()}
-      />
+      >
+        {deleteTarget && (deleteTarget.project_assignments?.length ?? 0) > 0 && (
+          <ul className="confirm-assignments">
+            {deleteTarget.project_assignments!.map((a) => (
+              <li key={a.project_id}>
+                <span className="confirm-assignments__name">
+                  {projectListLabel(a.project_name, !a.parent_name, a.parent_name)}
+                </span>
+                <span className="confirm-assignments__meta">
+                  {projectRoleLabel(a.project_role)} · {a.utilization_percent}%
+                  {a.onboarded ? " · Onboarded" : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </ConfirmDialog>
     </AppShell>
   );
 }

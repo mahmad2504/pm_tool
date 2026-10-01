@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.locations import ResourceLocation
 from app.models import ProjectResource, Resource, utc_now
 from app.services.projects import get_project_or_404
 from app.roles import ResourceRole, roles_for_api
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/api/resources", tags=["resources"])
 
 DbSession = Annotated[Session, Depends(get_db)]
 
-CSV_TEMPLATE = "name,role,email,notes\n"
+CSV_TEMPLATE = "name,role,email,notes,location\n"
 
 
 def get_resource_or_404(db: Session, resource_id: int) -> Resource:
@@ -45,38 +46,23 @@ def email_in_use(db: Session, email: str, exclude_id: int | None = None) -> bool
     return db.scalar(stmt) is not None
 
 
-def apply_resource_fields(
-    resource: Resource,
+def resource_list_filters(
+    db: Session,
     *,
-    name: str,
-    role: ResourceRole,
-    email: str,
-    notes: str | None,
-) -> None:
-    resource.name = name
-    resource.role = role.value
-    resource.email = email
-    resource.notes = notes
-    resource.updated_at = utc_now()
-
-
-@router.get("", response_model=ResourceListResponse)
-def list_resources(
-    db: DbSession,
     role: ResourceRole | None = None,
+    location: ResourceLocation | None = None,
     q: str | None = None,
     project_id: int | None = None,
     over_utilized: bool = False,
-    sort: Literal["newest", "name"] = "newest",
-    limit: int = Query(default=50, ge=1, le=200),
-    offset: int = Query(default=0, ge=0),
-) -> ResourceListResponse:
+) -> list:
     if project_id is not None:
         get_project_or_404(db, project_id)
 
     filters = []
     if role is not None:
         filters.append(Resource.role == role.value)
+    if location is not None:
+        filters.append(Resource.location == location.value)
     if q:
         pattern = f"%{q.strip()}%"
         filters.append(or_(Resource.name.ilike(pattern), Resource.email.ilike(pattern)))
@@ -92,6 +78,58 @@ def list_resources(
             .having(func.sum(ProjectResource.utilization_percent) > 100)
         )
         filters.append(Resource.id.in_(over_ids))
+    return filters
+
+
+def apply_resource_fields(
+    resource: Resource,
+    *,
+    name: str,
+    role: ResourceRole,
+    email: str,
+    location: ResourceLocation | None,
+    notes: str | None,
+) -> None:
+    resource.name = name
+    resource.role = role.value
+    resource.email = email
+    resource.location = location.value if location is not None else None
+    resource.notes = notes
+    resource.updated_at = utc_now()
+
+
+def with_utilization(db: Session, items: list[Resource]) -> list[ResourceWithUtilization]:
+    assignment_map = assignments_by_resource_ids(db, [r.id for r in items])
+    return [
+        ResourceWithUtilization(
+            **ResourceRead.model_validate(r).model_dump(),
+            total_utilization_percent=total_utilization(assignment_map.get(r.id, [])),
+            project_assignments=assignment_map.get(r.id, []),
+        )
+        for r in items
+    ]
+
+
+@router.get("", response_model=ResourceListResponse)
+def list_resources(
+    db: DbSession,
+    role: ResourceRole | None = None,
+    location: ResourceLocation | None = None,
+    q: str | None = None,
+    project_id: int | None = None,
+    over_utilized: bool = False,
+    sort: Literal["newest", "name"] = "newest",
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> ResourceListResponse:
+    filters = resource_list_filters(
+        db,
+        role=role,
+        location=location,
+        q=q,
+        project_id=project_id,
+        over_utilized=over_utilized,
+    )
 
     count_stmt = select(func.count()).select_from(Resource)
     if sort == "name":
@@ -105,16 +143,63 @@ def list_resources(
 
     total = db.scalar(count_stmt) or 0
     items = db.scalars(list_stmt.offset(offset).limit(limit)).all()
-    assignment_map = assignments_by_resource_ids(db, [r.id for r in items])
-    enriched = [
-        ResourceWithUtilization(
-            **ResourceRead.model_validate(r).model_dump(),
-            total_utilization_percent=total_utilization(assignment_map.get(r.id, [])),
-            project_assignments=assignment_map.get(r.id, []),
-        )
-        for r in items
-    ]
-    return ResourceListResponse(items=enriched, total=total)
+    role_count_stmt = select(Resource.role, func.count()).group_by(Resource.role)
+    if filters:
+        role_count_stmt = role_count_stmt.where(*filters)
+    role_counts = {
+        role: int(count) for role, count in db.execute(role_count_stmt).all()
+    }
+    return ResourceListResponse(
+        items=with_utilization(db, list(items)),
+        total=total,
+        role_counts=role_counts,
+    )
+
+
+@router.get("/report", response_model=ResourceListResponse)
+def resource_report(
+    db: DbSession,
+    role: ResourceRole | None = None,
+    location: ResourceLocation | None = None,
+    q: str | None = None,
+    project_id: int | None = None,
+) -> ResourceListResponse:
+    """Every person matching the directory filters, with utilization and assignments."""
+    filters = resource_list_filters(
+        db, role=role, location=location, q=q, project_id=project_id
+    )
+    stmt = select(Resource).order_by(func.lower(Resource.name), Resource.id)
+    if filters:
+        stmt = stmt.where(*filters)
+    items = list(db.scalars(stmt).all())
+    return ResourceListResponse(items=with_utilization(db, items), total=len(items))
+
+
+@router.get("/export")
+def export_resources(
+    db: DbSession,
+    role: ResourceRole | None = None,
+    location: ResourceLocation | None = None,
+    q: str | None = None,
+    project_id: int | None = None,
+) -> Response:
+    """Name and email for every person matching the directory filters."""
+    filters = resource_list_filters(
+        db, role=role, location=location, q=q, project_id=project_id
+    )
+    stmt = select(Resource).order_by(Resource.created_at.desc(), Resource.id.desc())
+    if filters:
+        stmt = stmt.where(*filters)
+    buffer = io.StringIO()
+    writer = csv.writer(buffer, lineterminator="\n")
+    writer.writerow(["name", "email"])
+    for resource in db.scalars(stmt).all():
+        writer.writerow([resource.name, resource.email])
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="resources.csv"'},
+    )
 
 
 @router.get("/import/template", response_class=PlainTextResponse)
@@ -174,9 +259,10 @@ async def import_resources(db: DbSession, file: UploadFile = File(...)) -> Impor
         role_raw = normalized.get("role", "")
         email = normalized.get("email", "")
         notes = normalized.get("notes", "")
+        location_raw = normalized.get("location", "")
 
         try:
-            parsed = CsvRowInput.from_csv_fields(name, role_raw, email, notes)
+            parsed = CsvRowInput.from_csv_fields(name, role_raw, email, notes, location_raw)
         except Exception as exc:
             errors.append({"row": row_num, "detail": str(exc)})
             continue
@@ -190,6 +276,7 @@ async def import_resources(db: DbSession, file: UploadFile = File(...)) -> Impor
             name=parsed.name,
             role=parsed.role.value,
             email=parsed.email,
+            location=parsed.location.value if parsed.location is not None else None,
             notes=parsed.notes,
         )
         db.add(resource)
@@ -229,6 +316,7 @@ def create_resource(payload: ResourceCreate, db: DbSession, response: Response) 
         name=payload.name,
         role=payload.role.value,
         email=payload.email,
+        location=payload.location.value if payload.location is not None else None,
         notes=payload.notes,
     )
     db.add(resource)
@@ -251,6 +339,7 @@ def update_resource(resource_id: int, payload: ResourceUpdate, db: DbSession) ->
         name=payload.name,
         role=payload.role,
         email=payload.email,
+        location=payload.location,
         notes=payload.notes,
     )
     db.commit()
@@ -268,6 +357,10 @@ def patch_resource(resource_id: int, payload: ResourcePatch, db: DbSession) -> R
     name = data.get("name", resource.name)
     role = data.get("role", ResourceRole(resource.role))
     email = data.get("email", resource.email)
+    location = data.get(
+        "location",
+        ResourceLocation(resource.location) if resource.location else None,
+    )
     notes = data.get("notes", resource.notes)
 
     if email_in_use(db, email, exclude_id=resource_id):
@@ -276,14 +369,31 @@ def patch_resource(resource_id: int, payload: ResourcePatch, db: DbSession) -> R
             detail="Email is already in use",
         )
 
-    apply_resource_fields(resource, name=name, role=role, email=email, notes=notes)
+    apply_resource_fields(
+        resource, name=name, role=role, email=email, location=location, notes=notes
+    )
     db.commit()
     db.refresh(resource)
     return resource
 
 
+def _assignment_label(project_name: str, parent_name: str | None) -> str:
+    if parent_name:
+        return f"{project_name} ({parent_name})"
+    return project_name
+
+
 @router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resource(resource_id: int, db: DbSession) -> None:
     resource = get_resource_or_404(db, resource_id)
+    assignments = assignments_by_resource_ids(db, [resource.id]).get(resource.id, [])
+    if assignments:
+        names = ", ".join(
+            _assignment_label(item.project_name, item.parent_name) for item in assignments
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Cannot delete {resource.name}. Assigned to: {names}",
+        )
     db.delete(resource)
     db.commit()

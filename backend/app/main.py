@@ -9,6 +9,7 @@ from app.database import (
     engine,
     ensure_chat_url_column,
     ensure_reports_with_pmo_column,
+    ensure_resource_location_column,
     run_sqlite_migrations,
 )
 from app.routers import groups, projects, resources, roles, tags
@@ -20,6 +21,7 @@ async def lifespan(_app: FastAPI):
     run_sqlite_migrations()
     ensure_reports_with_pmo_column()
     ensure_chat_url_column()
+    ensure_resource_location_column()
     yield
 
 

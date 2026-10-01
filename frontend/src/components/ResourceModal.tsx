@@ -1,5 +1,5 @@
 import { FormEvent } from "react";
-import { ResourceInput, ResourceRole, RoleItem } from "../api";
+import { RESOURCE_LOCATIONS, ResourceInput, ResourceLocation, ResourceRole, RoleItem } from "../api";
 
 type Props = {
   open: boolean;
@@ -61,6 +61,25 @@ export function ResourceModal({
               {roles.map((r) => (
                 <option key={r.code} value={r.code}>
                   {r.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Location
+            <select
+              value={form.location ?? ""}
+              onChange={(e) =>
+                onChange({
+                  ...form,
+                  location: (e.target.value || null) as ResourceLocation | null,
+                })
+              }
+            >
+              <option value="">Not set</option>
+              {RESOURCE_LOCATIONS.map((location) => (
+                <option key={location.code} value={location.code}>
+                  {location.label}
                 </option>
               ))}
             </select>

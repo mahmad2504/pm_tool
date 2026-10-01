@@ -1015,7 +1015,7 @@ export function ProjectDetailPage() {
                   <span className="picker-person">
                     <span className="picker-person__name">{r.name}</span>
                     <span className="picker-person__email" title={r.email}>
-                      ({r.email})
+                      ({r.location ? `${r.email} · ${r.location}` : r.email})
                     </span>
                   </span>
                   <button
