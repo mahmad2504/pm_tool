@@ -4,23 +4,19 @@ import {
   GroupItem,
   projectRoleLabel,
   ProjectSummary,
-  StatusReport,
   PROJECT_STATUSES,
   ProjectStatus,
   TagItem,
   createRootProject,
-  createStatusReport,
   downloadProjectsExport,
   projectsExportFilename,
   getProject,
   groupIconSrc,
   listGroups,
   listProjects,
-  listStatusReports,
   listTags,
   patchProject,
   updateGroup,
-  updateStatusReport,
   uploadGroupIcon,
 } from "../api";
 import { OnboardedIcon } from "../components/OnboardedIcon";
@@ -30,11 +26,6 @@ import { TagChips, TagEditor, tagsWithDraft } from "../components/TagEditor";
 import { AppShell } from "../layout/AppShell";
 import { projectReportPath } from "./ReportPage";
 import { formatUpdated } from "../reportHtml";
-import {
-  currentDatetimeLocalValue,
-  datetimeLocalToIso,
-  isoToDatetimeLocal,
-} from "../utils/datetimeLocal";
 
 const REPORT_FRESH_DAYS = 7;
 
@@ -132,15 +123,6 @@ export function ProjectsPage() {
   >([]);
   const [peopleLoading, setPeopleLoading] = useState(false);
   const [peopleError, setPeopleError] = useState<string | null>(null);
-  const [reportTarget, setReportTarget] = useState<ProjectSummary | null>(null);
-  const [latestReport, setLatestReport] = useState<StatusReport | null>(null);
-  const [reportBody, setReportBody] = useState("");
-  const [reportAt, setReportAt] = useState(currentDatetimeLocalValue);
-  const [newReportBody, setNewReportBody] = useState("");
-  const [newReportAt, setNewReportAt] = useState(currentDatetimeLocalValue);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState<string | null>(null);
-  const [reportSaving, setReportSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
@@ -240,75 +222,6 @@ export function ProjectsPage() {
       setPeopleError(err instanceof Error ? err.message : "Failed to load people");
     } finally {
       setPeopleLoading(false);
-    }
-  }
-
-  async function openLastReport(project: ProjectSummary) {
-    setReportTarget(project);
-    setLatestReport(null);
-    setReportBody("");
-    setReportAt(currentDatetimeLocalValue());
-    setNewReportBody("");
-    setNewReportAt(currentDatetimeLocalValue());
-    setReportError(null);
-    setReportLoading(true);
-    try {
-      const data = await listStatusReports(project.id, 1);
-      const latest = data.items[0];
-      if (!latest) {
-        setReportError("No report yet.");
-        return;
-      }
-      setLatestReport(latest);
-      setReportBody(latest.body);
-      setReportAt(isoToDatetimeLocal(latest.created_at));
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : "Failed to load the report");
-    } finally {
-      setReportLoading(false);
-    }
-  }
-
-  async function saveLastReport(event: FormEvent) {
-    event.preventDefault();
-    if (!reportTarget || !latestReport) return;
-    const body = reportBody.trim();
-    if (!body) return;
-    setReportSaving(true);
-    setReportError(null);
-    try {
-      await updateStatusReport(
-        reportTarget.id,
-        latestReport.id,
-        body,
-        datetimeLocalToIso(reportAt),
-      );
-      setReportTarget(null);
-      await load();
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : "Failed to save the report");
-    } finally {
-      setReportSaving(false);
-    }
-  }
-
-  async function addReport(event: FormEvent) {
-    event.preventDefault();
-    if (!reportTarget) return;
-    const body = newReportBody.trim();
-    if (!body) return;
-    setReportSaving(true);
-    setReportError(null);
-    try {
-      await createStatusReport(reportTarget.id, body, datetimeLocalToIso(newReportAt));
-      setNewReportBody("");
-      setNewReportAt(currentDatetimeLocalValue());
-      setReportTarget(null);
-      await load();
-    } catch (err) {
-      setReportError(err instanceof Error ? err.message : "Failed to add the report");
-    } finally {
-      setReportSaving(false);
     }
   }
 
@@ -617,22 +530,6 @@ export function ProjectsPage() {
                         <span>{p.resource_count}</span>
                       </button>
                     </PeopleNameHover>
-                    {p.status_report_count > 0 && (
-                      <button
-                        type="button"
-                        className="project-card__report"
-                        aria-label="Last report"
-                        onClick={() => void openLastReport(p)}
-                      >
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                          <path d="M14 2v6h6" />
-                          <path d="M16 13H8" />
-                          <path d="M16 17H8" />
-                          <path d="M10 9H8" />
-                        </svg>
-                      </button>
-                    )}
                   </div>
                 </div>
                 <h3 className="project-card__title">
@@ -852,96 +749,6 @@ export function ProjectsPage() {
                   </li>
                 ))}
               </ul>
-            )}
-          </div>
-        </div>
-      )}
-
-      {reportTarget && (
-        <div className="modal-backdrop" onClick={() => setReportTarget(null)} role="presentation">
-          <div
-            className="modal modal--report"
-            onClick={(event) => event.stopPropagation()}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="last-report-title"
-          >
-            <header className="modal__header">
-              <h2 id="last-report-title">Last report</h2>
-              <button type="button" className="icon-btn" onClick={() => setReportTarget(null)}>
-                ×
-              </button>
-            </header>
-            <p className="modal__message">{reportTarget.name}</p>
-            {reportLoading && <p className="modal__message">Loading…</p>}
-            {reportError && <p className="modal__message">{reportError}</p>}
-            {!reportLoading && latestReport && (
-              <form className="modal__form" onSubmit={(event) => void saveLastReport(event)}>
-                <label>
-                  Report
-                  <textarea
-                    required
-                    rows={8}
-                    value={reportBody}
-                    onChange={(event) => setReportBody(event.target.value)}
-                  />
-                </label>
-                <label>
-                  Reported at
-                  <input
-                    type="datetime-local"
-                    required
-                    value={reportAt}
-                    onChange={(event) => setReportAt(event.target.value)}
-                  />
-                </label>
-                <footer className="modal__footer">
-                  <button
-                    type="submit"
-                    className="btn btn--primary"
-                    disabled={reportSaving || !reportBody.trim() || !reportAt}
-                  >
-                    {reportSaving ? "Saving…" : "Save"}
-                  </button>
-                </footer>
-              </form>
-            )}
-            {!reportLoading && (
-              <form
-                className="modal__form report-dialog__new"
-                onSubmit={(event) => void addReport(event)}
-              >
-                <label>
-                  New report
-                  <textarea
-                    rows={4}
-                    value={newReportBody}
-                    onChange={(event) => setNewReportBody(event.target.value)}
-                    placeholder="Write a new status report…"
-                  />
-                </label>
-                <label>
-                  Reported at
-                  <input
-                    type="datetime-local"
-                    required
-                    value={newReportAt}
-                    onChange={(event) => setNewReportAt(event.target.value)}
-                  />
-                </label>
-                <footer className="modal__footer">
-                  <button type="button" className="btn btn--ghost" onClick={() => setReportTarget(null)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn--secondary"
-                    disabled={reportSaving || !newReportBody.trim()}
-                  >
-                    {reportSaving ? "Saving…" : "Add report"}
-                  </button>
-                </footer>
-              </form>
             )}
           </div>
         </div>

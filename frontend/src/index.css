@@ -1015,12 +1015,7 @@ a {
   flex: none;
 }
 
-.project-card__report {
-  flex: none;
-}
-
 .project-card__people,
-.project-card__report,
 .sub-resource-count {
   display: inline-flex;
   align-items: center;
@@ -1047,7 +1042,6 @@ a {
 }
 
 .project-card__people svg,
-.project-card__report svg,
 .sub-resource-count svg {
   width: 1rem;
   height: 1rem;
@@ -1063,19 +1057,9 @@ a {
   color: var(--success);
 }
 
-.project-card__report:hover {
-  color: var(--accent-hover);
-}
-
 .project-card__people--duplicate,
 .project-card__people--duplicate:hover {
   color: var(--accent);
-}
-
-.report-dialog__new {
-  margin-top: 0.25rem;
-  padding-top: 1rem;
-  border-top: 1px solid var(--border);
 }
 
 .people-dialog__list {
