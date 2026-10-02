@@ -123,10 +123,22 @@ function statusReportIsStale(reportedAt: string | null | undefined): boolean {
   return Date.now() - reported > STATUS_REPORT_STALE_MS;
 }
 
+function statusWarningIcon(label: string): string {
+  const safe = escapeHtml(label);
+  return `<span class="status-stale" title="${safe}"><svg viewBox="0 0 24 24" aria-label="${safe}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>`;
+}
+
 function staleStatusMark(reportedAt: string): string {
-  const title = `Last status report is more than a week old (${formatUpdated(reportedAt)})`;
-  const label = escapeHtml(title);
-  return `<span class="status-stale" title="${label}"><svg viewBox="0 0 24 24" aria-label="${label}"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7.5v6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="16.75" r="1.15" fill="currentColor"/></svg></span>`;
+  return statusWarningIcon(`Last status report is more than a week old (${formatUpdated(reportedAt)})`);
+}
+
+function statusLegend(): string {
+  const late = "Last status report is more than a week old";
+  return `<ul class="status-legend" aria-label="Status">
+        <li><span class="status-swatch st-reported"></span> Status reported within the last week</li>
+        <li><span class="status-swatch st-stale"></span>${statusWarningIcon(late)} ${late}</li>
+        <li><span class="status-swatch st-not-pmo"></span> ${escapeHtml(NOT_WITH_PMO_STATUS)}</li>
+      </ul>`;
 }
 
 const REPORT_PREVIEW_MAX_CHARS = 120;
@@ -190,6 +202,7 @@ function descriptionCell(
 }
 
 const NOT_WITH_PMO_STATUS = "Status not available. Reporting is not with PMO.";
+const SUB_PROJECT_STATUS_HINT = "Click to see individual project status.";
 
 function statusCell(
   body: string | null | undefined,
@@ -204,10 +217,10 @@ function statusCell(
   }
   const raw = body?.trim();
   if (!raw) return { className: "st", html: "" };
-  const stale = statusReportIsStale(reportedAt) ? staleStatusMark(reportedAt as string) : "";
+  const stale = statusReportIsStale(reportedAt);
   return {
-    className: "st",
-    html: `${stale}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS)}`,
+    className: stale ? "st st-stale" : "st st-reported",
+    html: `${stale ? staleStatusMark(reportedAt as string) : ""}${clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS)}`,
   };
 }
 
@@ -269,14 +282,20 @@ function projectTableRows(
         subCount > 0
           ? `<button type="button" class="expand" aria-expanded="false" aria-label="Show ${subLabel}"><span class="chevron" aria-hidden="true">▶</span> ${subLabel}</button>`
           : "";
-      const status = statusCell(
-        project.latest_status,
-        project.latest_status_at,
-        rootKey,
-        project.name,
-        statuses,
-        project.reports_with_pmo,
-      );
+      const status =
+        project.reports_with_pmo && subCount > 0
+          ? {
+              className: "st",
+              html: `<button type="button" class="status-expand">${escapeHtml(SUB_PROJECT_STATUS_HINT)}</button>`,
+            }
+          : statusCell(
+              project.latest_status,
+              project.latest_status_at,
+              rootKey,
+              project.name,
+              statuses,
+              project.reports_with_pmo,
+            );
       const root = `<tr data-project="${project.id}">
         <td>${escapeHtml(project.name)}${expand}</td>
         <td>${descriptionCell(project.description, rootKey, project.name, descriptions)}</td>
@@ -537,6 +556,18 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       font-weight: 600;
       box-shadow: inset 4px 0 0 #b45309;
     }
+    table.family td.st.st-reported {
+      background: #f0fdf4;
+      color: #3f6b4e;
+      font-weight: 600;
+      box-shadow: inset 4px 0 0 #86efac;
+    }
+    table.family td.st.st-stale {
+      background: #fef2f2;
+      color: #9f1239;
+      font-weight: 600;
+      box-shadow: inset 4px 0 0 #fca5a5;
+    }
     .status-stale {
       display: inline-block;
       width: 16px;
@@ -546,6 +577,39 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       color: #b42318;
     }
     .status-stale svg { display: block; width: 16px; height: 16px; }
+    ul.status-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 18px;
+      list-style: none;
+      margin: 0 0 16px;
+      padding: 0;
+      font-size: 13px;
+    }
+    ul.status-legend li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ul.status-legend .status-stale { margin: 0; }
+    .status-swatch {
+      display: inline-block;
+      width: 18px;
+      height: 18px;
+      flex: 0 0 auto;
+    }
+    .status-swatch.st-reported {
+      background: #f0fdf4;
+      box-shadow: inset 4px 0 0 #86efac;
+    }
+    .status-swatch.st-stale {
+      background: #fef2f2;
+      box-shadow: inset 4px 0 0 #fca5a5;
+    }
+    .status-swatch.st-not-pmo {
+      background: #fff4d6;
+      box-shadow: inset 4px 0 0 #b45309;
+    }
     button.status-more {
       display: inline;
       white-space: nowrap;
@@ -620,6 +684,16 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       white-space: nowrap;
     }
     button.expand .chevron { display: inline-block; width: 0.9em; }
+    button.status-expand {
+      border: 0;
+      padding: 0;
+      background: none;
+      color: var(--navy-2);
+      font: inherit;
+      text-align: left;
+      text-decoration: underline;
+      cursor: pointer;
+    }
     .sub-name { padding-left: 22px; color: var(--muted); font-weight: 400; }
     button.count-btn {
       border: 0;
@@ -688,7 +762,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     @media print {
       body { background: #fff; }
       .page { margin: 0; border: 0; }
-      .page > header, th, .kpi, .tag, tbody tr, .status-stale, td.st.st-not-pmo {
+      .page > header, th, .kpi, .tag, tbody tr, .status-stale, .status-swatch, td.st.st-not-pmo, td.st.st-reported, td.st.st-stale {
         print-color-adjust: exact;
         -webkit-print-color-adjust: exact;
       }
@@ -714,7 +788,8 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or See complete status. Select See complete description or See complete status when the text continues. A red mark in Status means the last status report is more than a week old.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. A project that is not reporting with PMO shows “Status not available. Reporting is not with PMO.” in Status even when it has sub-projects. Otherwise a project with sub-projects shows “Click to see individual project status.” in Status. Select that text to show or hide that project’s sub-projects, and each sub-project shows its own status. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or See complete status. Select See complete description or See complete status when the text continues.</p>
+      ${statusLegend()}
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
@@ -794,22 +869,33 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       }
       dialog.hidden = false;
     }
+    function toggleSubProjects(expand) {
+      const row = expand.closest("tr");
+      const id = row && row.dataset.project;
+      const open = expand.getAttribute("aria-expanded") === "true";
+      const nextOpen = !open;
+      expand.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      const countLabel = expand.textContent.replace(/^\\s*[▶▼]\\s*/, "").trim();
+      expand.setAttribute("aria-label", (nextOpen ? "Hide " : "Show ") + countLabel);
+      const chevron = expand.querySelector(".chevron");
+      if (chevron) chevron.textContent = nextOpen ? "▼" : "▶";
+      document.querySelectorAll('tr.sub[data-parent="' + id + '"]').forEach((sub) => {
+        sub.classList.toggle("is-open", nextOpen);
+      });
+    }
     document.body.addEventListener("click", (event) => {
+      const statusExpand = event.target.closest(".status-expand");
+      if (statusExpand) {
+        event.preventDefault();
+        const row = statusExpand.closest("tr");
+        const expand = row && row.querySelector(".expand");
+        if (expand) toggleSubProjects(expand);
+        return;
+      }
       const expand = event.target.closest(".expand");
       if (expand) {
         event.preventDefault();
-        const row = expand.closest("tr");
-        const id = row && row.dataset.project;
-        const open = expand.getAttribute("aria-expanded") === "true";
-        const nextOpen = !open;
-        expand.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-        const countLabel = expand.textContent.replace(/^\\s*[▶▼]\\s*/, "").trim();
-        expand.setAttribute("aria-label", (nextOpen ? "Hide " : "Show ") + countLabel);
-        const chevron = expand.querySelector(".chevron");
-        if (chevron) chevron.textContent = nextOpen ? "▼" : "▶";
-        document.querySelectorAll('tr.sub[data-parent="' + id + '"]').forEach((sub) => {
-          sub.classList.toggle("is-open", nextOpen);
-        });
+        toggleSubProjects(expand);
         return;
       }
       const statusButton = event.target.closest(".status-more");

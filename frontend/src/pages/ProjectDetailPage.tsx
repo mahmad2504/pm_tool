@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   PROJECT_ROLES,
   PROJECT_STATUSES,
+  GroupItem,
   ProjectDetail,
   ProjectRole,
   ProjectStatus,
@@ -19,6 +20,7 @@ import {
   detachResourceFromProject,
   getProject,
   listAllResources,
+  listGroups,
   listStatusReports,
   listTags,
   patchProject,
@@ -171,6 +173,8 @@ export function ProjectDetailPage() {
     status: "assessment" as ProjectStatus,
     reports_with_pmo: true,
   });
+  const [groups, setGroups] = useState<GroupItem[]>([]);
+  const [groupMode, setGroupMode] = useState<"existing" | "new">("existing");
   const [subForm, setSubForm] = useState({
     name: "",
     description: "",
@@ -206,6 +210,7 @@ export function ProjectDetailPage() {
         status: detail.status,
         reports_with_pmo: detail.reports_with_pmo,
       });
+      setGroupMode("existing");
       const rep = await listStatusReports(
         projectId,
         REPORT_PAGE_SIZE,
@@ -220,6 +225,9 @@ export function ProjectDetailPage() {
       listTags()
         .then((items) => setTagSuggestions(items.map((tag) => tag.name)))
         .catch(() => setTagSuggestions([]));
+      listGroups()
+        .then(setGroups)
+        .catch(() => setGroups([]));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load project");
     }
@@ -521,14 +529,57 @@ export function ProjectDetailPage() {
             />
           </label>
           {project.is_root ? (
-            <label>
-              Group
-              <input
-                required
-                value={editMeta.group_name}
-                onChange={(e) => setEditMeta({ ...editMeta, group_name: e.target.value })}
-              />
-            </label>
+            <fieldset className="group-choice">
+              <legend>Group</legend>
+              <div className="group-choice__modes">
+                <label className="group-choice__option">
+                  <input
+                    type="radio"
+                    name="edit-group-mode"
+                    checked={groupMode === "existing"}
+                    disabled={groups.length === 0}
+                    onChange={() => {
+                      setGroupMode("existing");
+                      setEditMeta({ ...editMeta, group_name: project.group_name ?? "" });
+                    }}
+                  />
+                  Existing group
+                </label>
+                <label className="group-choice__option">
+                  <input
+                    type="radio"
+                    name="edit-group-mode"
+                    checked={groupMode === "new"}
+                    onChange={() => {
+                      setGroupMode("new");
+                      setEditMeta({ ...editMeta, group_name: "" });
+                    }}
+                  />
+                  New group
+                </label>
+              </div>
+              {groupMode === "existing" ? (
+                <select
+                  required
+                  value={editMeta.group_name}
+                  onChange={(e) => setEditMeta({ ...editMeta, group_name: e.target.value })}
+                >
+                  <option value="">Select a group</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.name}>
+                      {group.name}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  required
+                  placeholder="Group name"
+                  value={editMeta.group_name}
+                  onChange={(e) => setEditMeta({ ...editMeta, group_name: e.target.value })}
+                />
+              )}
+            </fieldset>
           ) : (
             <p className="muted">Group (inherited): {project.group_name ?? "—"}</p>
           )}
