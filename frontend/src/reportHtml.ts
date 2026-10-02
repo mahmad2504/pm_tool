@@ -383,6 +383,15 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       </table>`;
     })
     .join("");
+  const hasSubProjects = groups.some((group) =>
+    group.projects.some((project) => project.sub_projects.length > 0),
+  );
+  const subToggle = hasSubProjects
+    ? `<div class="sub-toggle">
+      <button type="button" class="expand-all">Expand all sub-projects</button>
+      <button type="button" class="collapse-all">Collapse all sub-projects</button>
+    </div>`
+    : "";
   const listJson = JSON.stringify({ resources, shared, unique, shareProjects, statuses, descriptions }).replace(/</g, "\\u003c");
   return `<!DOCTYPE html>
 <html lang="en">
@@ -642,6 +651,22 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       white-space: nowrap;
     }
     button.expand .chevron { display: inline-block; width: 0.9em; }
+    .sub-toggle {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 0 0 18px;
+    }
+    button.expand-all, button.collapse-all {
+      background: transparent;
+      color: var(--navy);
+      border: 1px solid var(--navy-2);
+      padding: 6px 12px;
+      cursor: pointer;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 600;
+    }
     button.status-expand {
       border: 0;
       padding: 0;
@@ -740,7 +765,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       }
       h2 { break-after: avoid; }
       table { break-inside: avoid; }
-      button.print, .shared-backdrop, button.share-projects-btn, button.expand, button.status-more, .status-screen { display: none; }
+      button.print, .shared-backdrop, button.share-projects-btn, button.expand, button.status-more, .status-screen, .sub-toggle { display: none; }
       .status-full-print { display: inline; }
       tr.sub { display: table-row; }
       ul.share-projects-print { display: block; }
@@ -760,7 +785,8 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. A project that is not reporting with PMO shows “Status not available. Reporting is not with PMO.” in Status even when it has sub-projects. Otherwise a project with sub-projects shows “Click to view individual project status.” in Status. Select that text to show or hide that project’s sub-projects, and each sub-project shows its own status. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or View complete status. Select See complete description or View complete status when the text continues.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. ${hasSubProjects ? "Select Expand all sub-projects or Collapse all sub-projects to show or hide every sub-project. " : ""}Select a sub-project count under a project name to show or hide its sub-projects. A project that is not reporting with PMO shows “Status not available. Reporting is not with PMO.” in Status even when it has sub-projects. Otherwise a project with sub-projects shows “Click to view individual project status.” in Status. Select that text to show or hide that project’s sub-projects, and each sub-project shows its own status. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or View complete status. Select See complete description or View complete status when the text continues.</p>
+      ${subToggle}
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
@@ -843,21 +869,37 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       body.append(table);
       dialog.hidden = false;
     }
-    function toggleSubProjects(expand) {
+    function setSubProjects(expand, open) {
       const row = expand.closest("tr");
       const id = row && row.dataset.project;
-      const open = expand.getAttribute("aria-expanded") === "true";
-      const nextOpen = !open;
-      expand.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+      expand.setAttribute("aria-expanded", open ? "true" : "false");
       const countLabel = expand.textContent.replace(/^\\s*[▶▼]\\s*/, "").trim();
-      expand.setAttribute("aria-label", (nextOpen ? "Hide " : "Show ") + countLabel);
+      expand.setAttribute("aria-label", (open ? "Hide " : "Show ") + countLabel);
       const chevron = expand.querySelector(".chevron");
-      if (chevron) chevron.textContent = nextOpen ? "▼" : "▶";
+      if (chevron) chevron.textContent = open ? "▼" : "▶";
       document.querySelectorAll('tr.sub[data-parent="' + id + '"]').forEach((sub) => {
-        sub.classList.toggle("is-open", nextOpen);
+        sub.classList.toggle("is-open", open);
       });
     }
+    function toggleSubProjects(expand) {
+      setSubProjects(expand, expand.getAttribute("aria-expanded") !== "true");
+    }
+    function setAllSubProjects(open) {
+      document.querySelectorAll("button.expand").forEach((expand) => setSubProjects(expand, open));
+    }
     document.body.addEventListener("click", (event) => {
+      const expandAll = event.target.closest(".expand-all");
+      if (expandAll) {
+        event.preventDefault();
+        setAllSubProjects(true);
+        return;
+      }
+      const collapseAll = event.target.closest(".collapse-all");
+      if (collapseAll) {
+        event.preventDefault();
+        setAllSubProjects(false);
+        return;
+      }
       const statusExpand = event.target.closest(".status-expand");
       if (statusExpand) {
         event.preventDefault();
