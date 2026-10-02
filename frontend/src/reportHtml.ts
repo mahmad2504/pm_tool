@@ -751,8 +751,22 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       cursor: pointer;
       font: inherit;
     }
-    .shared-person { padding: 4px 20px 8px; }
-    .shared-person h3 { margin: 16px 0 8px; font-size: 16px; }
+    table.shared-assignments { margin: 0; }
+    tr.shared-person-name td {
+      background: #e8eef5;
+      color: var(--navy-2);
+      font-size: 15px;
+      font-weight: 600;
+      padding-top: 14px;
+      padding-bottom: 8px;
+    }
+    table.shared-assignments tbody tr:not(.shared-person-name) td {
+      font-size: 12px;
+      font-weight: 400;
+    }
+    table.shared-assignments tbody tr:not(.shared-person-name) td:first-child {
+      padding-left: 28px;
+    }
     @media (max-width: 720px) {
       .page { margin: 0; border: 0; }
       .page > header, .body { padding: 20px; }
@@ -845,14 +859,18 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       };
       title.textContent = (headings[kind] || "") + label;
       body.replaceChildren();
+      const table = document.createElement("table");
+      table.className = "shared-assignments";
+      table.innerHTML = "<thead><tr><th>Project</th><th class=\\"num\\">Utilization</th></tr></thead>";
+      const tbody = document.createElement("tbody");
       for (const person of people) {
-        const section = document.createElement("section");
-        section.className = "shared-person";
-        const heading = document.createElement("h3");
-        heading.textContent = person.name;
-        const table = document.createElement("table");
-        table.innerHTML = "<thead><tr><th>Project</th><th>Utilization</th></tr></thead>";
-        const tbody = document.createElement("tbody");
+        const nameRow = document.createElement("tr");
+        nameRow.className = "shared-person-name";
+        const nameCell = document.createElement("td");
+        nameCell.colSpan = 2;
+        nameCell.textContent = person.name;
+        nameRow.append(nameCell);
+        tbody.append(nameRow);
         for (const assignment of person.assignments) {
           const row = document.createElement("tr");
           const projectCell = document.createElement("td");
@@ -863,10 +881,9 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
           row.append(projectCell, utilizationCell);
           tbody.append(row);
         }
-        table.append(tbody);
-        section.append(heading, table);
-        body.append(section);
       }
+      table.append(tbody);
+      body.append(table);
       dialog.hidden = false;
     }
     function toggleSubProjects(expand) {
