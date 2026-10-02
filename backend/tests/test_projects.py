@@ -691,6 +691,7 @@ def test_project_report_omits_completed_projects_and_assignments(client, db_sess
     assert project["sub_projects"][0]["id"] == ongoing["id"]
     assert project["resource_count"] == 1
     assert [person["name"] for person in project["resources"]] == ["Ada"]
+    assert project["resources"][0]["role"] == "software_engineer"
     assert [item["project_name"] for item in project["resources"][0]["assignments"]] == ["Live"]
     assert project["shared_resources"] == []
 

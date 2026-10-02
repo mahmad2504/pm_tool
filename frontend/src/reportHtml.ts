@@ -743,6 +743,11 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       padding-top: 14px;
       padding-bottom: 8px;
     }
+    tr.shared-person-name .shared-person-type {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 500;
+    }
     table.shared-assignments tbody tr:not(.shared-person-name) td {
       font-size: 12px;
       font-weight: 400;
@@ -810,6 +815,16 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       const name = assignment.parent_name ? assignment.parent_name + " / " + assignment.project_name : assignment.project_name;
       return assignment.group_name ? assignment.group_name + " · " + name : name;
     }
+    function resourceTypeLabel(role) {
+      const labels = {
+        software_engineer: "Software",
+        hardware_engineer: "Hardware",
+        it_engineer: "IT",
+        analog_design_engineer: "Analog design",
+        pd_engineer: "Physical Design",
+      };
+      return labels[role] || "";
+    }
     function openList(kind, key, label) {
       if (kind === "share-projects") {
         const names = (listData.shareProjects && listData.shareProjects[key]) || [];
@@ -852,6 +867,13 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
         const nameCell = document.createElement("td");
         nameCell.colSpan = 2;
         nameCell.textContent = person.name;
+        const typeLabel = resourceTypeLabel(person.role);
+        if (typeLabel) {
+          const type = document.createElement("span");
+          type.className = "shared-person-type";
+          type.textContent = " · " + typeLabel;
+          nameCell.append(type);
+        }
         nameRow.append(nameCell);
         tbody.append(nameRow);
         for (const assignment of person.assignments) {

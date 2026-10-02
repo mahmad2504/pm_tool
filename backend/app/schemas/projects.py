@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.roles import ProjectLifecycle, ProjectRole
+from app.roles import ProjectLifecycle, ProjectRole, ResourceRole
 from app.schemas.resources import ResourceRead
 from app.services.tags import normalize_tag_list
 
@@ -228,6 +228,7 @@ class ReportAssignment(BaseModel):
 class ReportSharedResource(BaseModel):
     id: int
     name: str
+    role: ResourceRole
     assignments: list[ReportAssignment]
 
 

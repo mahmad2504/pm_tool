@@ -448,14 +448,14 @@ def export_projects(
 def _listed_people(
     member_ids: set[int],
     shown_project_ids: set[int] | None,
-    people: dict[int, tuple[str, list[ReportAssignment]]],
+    people: dict[int, tuple[str, str, list[ReportAssignment]]],
     *,
     outside_home_ids: set[int] | None = None,
     other_group_name: str | None = None,
 ) -> list[ReportSharedResource]:
     listed: list[ReportSharedResource] = []
     for resource_id in member_ids:
-        name, assignments = people[resource_id]
+        name, role, assignments = people[resource_id]
         if outside_home_ids is not None and all(
             item.project_id in outside_home_ids for item in assignments
         ):
@@ -469,7 +469,9 @@ def _listed_people(
             if shown_project_ids is None
             else [item for item in assignments if item.project_id in shown_project_ids]
         )
-        listed.append(ReportSharedResource(id=resource_id, name=name, assignments=shown))
+        listed.append(
+            ReportSharedResource(id=resource_id, name=name, role=role, assignments=shown)
+        )
     listed.sort(key=lambda item: item.name.lower())
     return listed
 
@@ -506,7 +508,7 @@ def project_report(
         for project_id in (root_id, *(child.id for child in children))
     ]
     members: dict[int, set[int]] = {project_id: set() for project_id in all_ids}
-    people: dict[int, tuple[str, list[ReportAssignment]]] = {}
+    people: dict[int, tuple[str, str, list[ReportAssignment]]] = {}
     if all_ids:
         resource_ids = list(
             db.scalars(
@@ -522,6 +524,7 @@ def project_report(
                 select(
                     ProjectResource.resource_id,
                     Resource.name,
+                    Resource.role,
                     Project.id,
                     Project.name,
                     Parent.name,
@@ -543,6 +546,7 @@ def project_report(
             for (
                 resource_id,
                 resource_name,
+                resource_role,
                 project_id,
                 project_name,
                 parent_name,
@@ -556,9 +560,11 @@ def project_report(
                     group_name=assignment_group,
                     utilization_percent=int(utilization),
                 )
-                name, assignments = people.get(resource_id, (resource_name, []))
+                name, role, assignments = people.get(
+                    resource_id, (resource_name, resource_role, [])
+                )
                 assignments.append(assignment)
-                people[resource_id] = (name, assignments)
+                people[resource_id] = (name, role, assignments)
                 if project_id in members:
                     members[project_id].add(resource_id)
     latest_status = _latest_status_reports(db, all_ids)

@@ -488,6 +488,7 @@ export interface ReportAssignment {
 export interface ReportSharedResource {
   id: number;
   name: string;
+  role: ResourceRole;
   assignments: ReportAssignment[];
 }
 
