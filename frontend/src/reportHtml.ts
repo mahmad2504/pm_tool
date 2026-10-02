@@ -200,7 +200,7 @@ function statusCell(
   const raw = body?.trim();
   if (!raw) return { className: "st", html: "" };
   const stale = statusReportIsStale(reportedAt);
-  const statusHtml = clippedTextCell(raw, statusKey, label, statuses, "See complete status", "status", REPORT_PREVIEW_MAX_CHARS);
+  const statusHtml = clippedTextCell(raw, statusKey, label, statuses, "View complete status", "status", REPORT_PREVIEW_MAX_CHARS);
   return {
     className: stale ? "st st-stale" : "st st-reported",
     html: stale
@@ -760,7 +760,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
         <div class="kpi navy"><b>${projectTotal}</b><span>Projects currently tracked</span></div>
         <div class="kpi teal"><b>${uniqueResources.size}</b><span>Engineering resources (de-duplicated)</span></div>
       </div>
-      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. A project that is not reporting with PMO shows “Status not available. Reporting is not with PMO.” in Status even when it has sub-projects. Otherwise a project with sub-projects shows “Click to see individual project status.” in Status. Select that text to show or hide that project’s sub-projects, and each sub-project shows its own status. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or See complete status. Select See complete description or See complete status when the text continues.</p>
+      <p class="lead">Engineering resources are counted once when a person appears on more than one project. Select a number to see names and utilization, or a project count to see the other projects. Select a sub-project count under a project name to show or hide its sub-projects. A project that is not reporting with PMO shows “Status not available. Reporting is not with PMO.” in Status even when it has sub-projects. Otherwise a project with sub-projects shows “Click to see individual project status.” in Status. Select that text to show or hide that project’s sub-projects, and each sub-project shows its own status. Description and status show through the first blank line. A longer description or status is shortened with ... and See complete description or View complete status. Select See complete description or View complete status when the text continues.</p>
       ${groups.length ? summary : `<p class="empty">No projects match this filter.</p>`}
       ${sections}
     </div>
