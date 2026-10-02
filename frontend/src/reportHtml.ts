@@ -402,7 +402,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       --gold: #c9a227;
       --sw: #0f766e;
       --dv: #4338ca;
-      --ai: #c2410c;
+      --ai: #0369a1;
       --na: #15803d;
     }
     * { box-sizing: border-box; }
@@ -511,7 +511,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     }
     .tag.sw { background: #ccfbf1; color: #115e59; }
     .tag.dv { background: #e0e7ff; color: #3730a3; }
-    .tag.ai { background: #ffedd5; color: #9a3412; }
+    .tag.ai { background: #e0f2fe; color: #075985; }
     .tag.na { background: #dcfce7; color: #166534; }
     p.lead { margin: 0 0 16px; }
     table { width: 100%; border-collapse: collapse; font-size: 14px; }
@@ -617,7 +617,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     table.na th { background: var(--na); }
     tbody tr.row-sw { background: #f0fdfa; }
     tbody tr.row-dv { background: #eef2ff; }
-    tbody tr.row-ai { background: #fff7ed; }
+    tbody tr.row-ai { background: #f0f9ff; }
     tbody tr.row-na { background: #f0fdf4; }
     tr.row-sw td:first-child { box-shadow: inset 5px 0 0 var(--sw); }
     tr.row-dv td:first-child { box-shadow: inset 5px 0 0 var(--dv); }
