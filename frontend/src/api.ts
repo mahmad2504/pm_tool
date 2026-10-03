@@ -142,6 +142,8 @@ export function listResources(params?: {
   limit?: number;
   offset?: number;
   over_utilized?: boolean;
+  under_utilized?: boolean;
+  unassigned?: boolean;
   sort?: "name" | "newest";
 }): Promise<ResourceListResponse> {
   const search = new URLSearchParams();
@@ -152,6 +154,8 @@ export function listResources(params?: {
   if (params?.limit) search.set("limit", String(params.limit));
   if (params?.offset) search.set("offset", String(params.offset));
   if (params?.over_utilized) search.set("over_utilized", "true");
+  if (params?.under_utilized) search.set("under_utilized", "true");
+  if (params?.unassigned) search.set("unassigned", "true");
   if (params?.sort) search.set("sort", params.sort);
   const query = search.toString();
   return request(`/api/resources${query ? `?${query}` : ""}`);

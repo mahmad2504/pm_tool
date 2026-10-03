@@ -286,6 +286,97 @@ def test_over_utilized_resources(client, db_session):
     assert cleared["total"] == 0
 
 
+def test_under_utilized_resources(client):
+    over = create_resource(client, name="Over", email="over@example.com").json()
+    cap = create_resource(client, name="Cap", email="cap@example.com").json()
+    spare = create_resource(client, name="Spare", email="spare@example.com").json()
+    zeroed = create_resource(client, name="Zeroed", email="zeroed@example.com").json()
+    idle = create_resource(client, name="Idle", email="idle@example.com").json()
+    finished_only = create_resource(
+        client, name="Finished Only", email="finished@example.com"
+    ).json()
+
+    alpha = client.post(
+        "/api/projects",
+        json={"name": "Alpha", "group_name": "Platform", "status": "in_progress"},
+    ).json()
+    beta = client.post(
+        "/api/projects",
+        json={"name": "Beta", "group_name": "Platform", "status": "in_progress"},
+    ).json()
+    done = client.post(
+        "/api/projects",
+        json={"name": "Done", "group_name": "Archive", "status": "completed"},
+    ).json()
+
+    def assign(project_id: int, resource_id: int, percent: int) -> None:
+        attached = client.post(
+            f"/api/projects/{project_id}/resources",
+            json={"resource_id": resource_id, "utilization_percent": percent},
+        )
+        assert attached.status_code == 201
+
+    assign(alpha["id"], over["id"], 60)
+    assign(beta["id"], over["id"], 50)
+    assign(alpha["id"], cap["id"], 100)
+    assign(alpha["id"], spare["id"], 40)
+    assign(alpha["id"], zeroed["id"], 0)
+    assign(done["id"], finished_only["id"], 80)
+
+    under = client.get("/api/resources", params={"under_utilized": True}).json()
+    assert under["total"] == 1
+    assert under["items"][0]["email"] == "spare@example.com"
+    assert under["items"][0]["total_utilization_percent"] == 40
+
+    unassigned = client.get("/api/resources", params={"unassigned": True}).json()
+    by_email = {item["email"]: item for item in unassigned["items"]}
+    assert unassigned["total"] == 3
+    assert set(by_email) == {
+        "zeroed@example.com",
+        "idle@example.com",
+        "finished@example.com",
+    }
+    assert by_email["zeroed@example.com"]["total_utilization_percent"] == 0
+    assert by_email["zeroed@example.com"]["project_assignments"][0]["project_name"] == "Alpha"
+    assert by_email["idle@example.com"]["total_utilization_percent"] == 0
+    assert by_email["idle@example.com"]["project_assignments"] == []
+    assert by_email["finished@example.com"]["total_utilization_percent"] == 0
+    assert by_email["finished@example.com"]["project_assignments"] == []
+    assert client.get("/api/resources", params={"under_utilized": True, "q": "idle@"}).json()["total"] == 0
+    assert client.get("/api/resources", params={"under_utilized": True, "q": "zeroed@"}).json()["total"] == 0
+
+    over_list = client.get("/api/resources", params={"over_utilized": True}).json()
+    assert over_list["total"] == 1
+    assert over_list["items"][0]["email"] == "over@example.com"
+    assert over_list["items"][0]["total_utilization_percent"] == 110
+
+    assert client.get("/api/resources", params={"under_utilized": True, "q": "cap@"}).json()["total"] == 0
+    assert client.get("/api/resources", params={"unassigned": True, "q": "cap@"}).json()["total"] == 0
+    assert client.get("/api/resources", params={"over_utilized": True, "q": "cap@"}).json()["total"] == 0
+
+    raised = client.patch(
+        f"/api/projects/{alpha['id']}/resources/{spare['id']}",
+        json={"utilization_percent": 100},
+    )
+    assert raised.status_code == 200
+    cleared = client.get("/api/resources", params={"under_utilized": True, "q": "spare@"}).json()
+    assert cleared["total"] == 0
+    assert client.get("/api/resources", params={"under_utilized": True}).json()["total"] == 0
+
+    moved = client.patch(
+        f"/api/projects/{alpha['id']}/resources/{zeroed['id']}",
+        json={"utilization_percent": 25},
+    )
+    assert moved.status_code == 200
+    assert client.get("/api/resources", params={"unassigned": True, "q": "zeroed@"}).json()["total"] == 0
+    promoted = client.get("/api/resources", params={"under_utilized": True}).json()
+    assert promoted["total"] == 1
+    assert promoted["items"][0]["email"] == "zeroed@example.com"
+    assert promoted["items"][0]["total_utilization_percent"] == 25
+    remaining = client.get("/api/resources", params={"unassigned": True}).json()
+    assert remaining["total"] == 2
+
+
 def test_completed_projects_omitted_from_utilization(client):
     ada = create_resource(client, name="Ada", email="ada@example.com").json()
     grace = create_resource(client, name="Grace", email="grace@example.com").json()

@@ -10,6 +10,7 @@ import {
   Resource,
   ResourceInput,
   ResourceLocation,
+  ResourceProjectAssignment,
   ResourceRole,
   RoleItem,
   projectRoleLabel,
@@ -23,10 +24,13 @@ import {
   resourcesExportFilename,
   ProjectSummary,
   templateCsvUrl,
+  updateProjectResourceUtilization,
   updateResource,
 } from "../api";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { notifyUtilizationChanged } from "../components/OverUtilizationNotice";
 import { OnboardedIcon } from "../components/OnboardedIcon";
+import { ProjectRoleIcon } from "../components/ProjectRoleIcon";
 import { ResourceModal } from "../components/ResourceModal";
 import { RoleBadge } from "../components/RoleBadge";
 import { Link } from "react-router-dom";
@@ -47,6 +51,62 @@ const emptyForm: ResourceInput = {
 
 function roleLabel(roles: RoleItem[], code: ResourceRole): string {
   return roles.find((r) => r.code === code)?.label ?? code;
+}
+
+function AssignmentUtilization({
+  resourceId,
+  assignment,
+  onSaved,
+  onError,
+}: {
+  resourceId: number;
+  assignment: ResourceProjectAssignment;
+  onSaved: (percent: number) => void;
+  onError: (message: string) => void;
+}) {
+  const [value, setValue] = useState(String(assignment.utilization_percent));
+
+  useEffect(() => {
+    setValue(String(assignment.utilization_percent));
+  }, [assignment.utilization_percent]);
+
+  async function commit() {
+    const trimmed = value.trim();
+    const percent = Number(trimmed);
+    if (trimmed === "" || !Number.isInteger(percent) || percent < 0 || percent > 100) {
+      onError("Utilization must be between 0 and 100");
+      setValue(String(assignment.utilization_percent));
+      return;
+    }
+    if (percent === assignment.utilization_percent) {
+      setValue(String(assignment.utilization_percent));
+      return;
+    }
+    try {
+      await updateProjectResourceUtilization(assignment.project_id, resourceId, percent);
+      notifyUtilizationChanged();
+      onSaved(percent);
+    } catch (err) {
+      onError(err instanceof Error ? err.message : "Failed to update utilization");
+      setValue(String(assignment.utilization_percent));
+    }
+  }
+
+  return (
+    <label className="utilization-edit">
+      <input
+        type="number"
+        min={0}
+        max={100}
+        step={1}
+        value={value}
+        aria-label={`Utilization on ${assignment.project_name}`}
+        onChange={(e) => setValue(e.target.value)}
+        onBlur={() => void commit()}
+      />
+      <span className="muted">%</span>
+    </label>
+  );
 }
 
 function ResourcePager({
@@ -114,6 +174,27 @@ export function ResourcesPage() {
   const [importing, setImporting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Resource | null>(null);
+
+  function applyAssignmentUtilization(resourceId: number, projectId: number, percent: number) {
+    setResources((current) =>
+      current.map((resource) => {
+        if (resource.id !== resourceId) return resource;
+        const assignments = (resource.project_assignments ?? []).map((assignment) =>
+          assignment.project_id === projectId
+            ? { ...assignment, utilization_percent: percent }
+            : assignment,
+        );
+        return {
+          ...resource,
+          project_assignments: assignments,
+          total_utilization_percent: assignments.reduce(
+            (sum, assignment) => sum + assignment.utilization_percent,
+            0,
+          ),
+        };
+      }),
+    );
+  }
 
   useEffect(() => {
     listRoles()
@@ -505,7 +586,14 @@ export function ResourcesPage() {
                   {(r.project_assignments?.length ?? 0) > 0 && (
                     <ul className="resource-assignments">
                       {r.project_assignments!.map((a) => (
-                        <li key={a.project_id}>
+                        <li
+                          key={a.project_id}
+                          className={
+                            a.project_role === "lead" || a.project_role === "director"
+                              ? `resource-assignments__row resource-assignments__row--${a.project_role}`
+                              : "resource-assignments__row"
+                          }
+                        >
                           <Link to={`/projects/${a.project_id}`}>
                             {projectListLabel(
                               a.project_name,
@@ -513,11 +601,17 @@ export function ResourcesPage() {
                               a.parent_name,
                             )}
                           </Link>
-                          <span className="muted">
-                            {" "}
-                            — {projectRoleLabel(a.project_role)} — {a.utilization_percent}%
-                          </span>
+                          <ProjectRoleIcon role={a.project_role} />
                           {a.onboarded ? <OnboardedIcon /> : null}
+                          <AssignmentUtilization
+                            resourceId={r.id}
+                            assignment={a}
+                            onSaved={(percent) => {
+                              setError(null);
+                              applyAssignmentUtilization(r.id, a.project_id, percent);
+                            }}
+                            onError={setError}
+                          />
                         </li>
                       ))}
                     </ul>

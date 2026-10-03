@@ -1,6 +1,10 @@
 import { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
-import { OverUtilizationNotice } from "../components/OverUtilizationNotice";
+import {
+  OverUtilizationNotice,
+  UnassignedNotice,
+  UnderUtilizationNotice,
+} from "../components/OverUtilizationNotice";
 
 export function AppShell({
   children,
@@ -48,6 +52,8 @@ export function AppShell({
       </aside>
       <main className={wide ? "main main--wide" : "main"}>
         <OverUtilizationNotice />
+        <UnderUtilizationNotice />
+        <UnassignedNotice />
         {children}
       </main>
     </div>

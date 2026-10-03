@@ -46,6 +46,25 @@ def email_in_use(db: Session, email: str, exclude_id: int | None = None) -> bool
     return db.scalar(stmt) is not None
 
 
+def active_utilization_totals():
+    """Sum of utilization on projects that are still active, including their root."""
+    Root = aliased(Project)
+    return (
+        select(
+            ProjectResource.resource_id.label("resource_id"),
+            func.sum(ProjectResource.utilization_percent).label("total"),
+        )
+        .join(Project, ProjectResource.project_id == Project.id)
+        .join(Root, Project.root_project_id == Root.id)
+        .where(
+            Project.status != ProjectLifecycle.completed.value,
+            Root.status != ProjectLifecycle.completed.value,
+        )
+        .group_by(ProjectResource.resource_id)
+        .subquery()
+    )
+
+
 def resource_list_filters(
     db: Session,
     *,
@@ -54,6 +73,8 @@ def resource_list_filters(
     q: str | None = None,
     project_id: int | None = None,
     over_utilized: bool = False,
+    under_utilized: bool = False,
+    unassigned: bool = False,
 ) -> list:
     if project_id is not None:
         get_project_or_404(db, project_id)
@@ -72,19 +93,27 @@ def resource_list_filters(
         )
         filters.append(Resource.id.in_(assigned_ids))
     if over_utilized:
-        Root = aliased(Project)
-        over_ids = (
-            select(ProjectResource.resource_id)
-            .join(Project, ProjectResource.project_id == Project.id)
-            .join(Root, Project.root_project_id == Root.id)
-            .where(
-                Project.status != ProjectLifecycle.completed.value,
-                Root.status != ProjectLifecycle.completed.value,
-            )
-            .group_by(ProjectResource.resource_id)
-            .having(func.sum(ProjectResource.utilization_percent) > 100)
+        totals = active_utilization_totals()
+        filters.append(
+            Resource.id.in_(select(totals.c.resource_id).where(totals.c.total > 100))
         )
-        filters.append(Resource.id.in_(over_ids))
+    if under_utilized:
+        totals = active_utilization_totals()
+        filters.append(
+            Resource.id.in_(
+                select(totals.c.resource_id).where(totals.c.total > 0, totals.c.total < 100)
+            )
+        )
+    if unassigned:
+        totals = active_utilization_totals()
+        person = aliased(Resource)
+        filters.append(
+            Resource.id.in_(
+                select(person.id)
+                .outerjoin(totals, person.id == totals.c.resource_id)
+                .where(func.coalesce(totals.c.total, 0) == 0)
+            )
+        )
     return filters
 
 
@@ -125,6 +154,8 @@ def list_resources(
     q: str | None = None,
     project_id: int | None = None,
     over_utilized: bool = False,
+    under_utilized: bool = False,
+    unassigned: bool = False,
     sort: Literal["newest", "name"] = "newest",
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
@@ -136,6 +167,8 @@ def list_resources(
         q=q,
         project_id=project_id,
         over_utilized=over_utilized,
+        under_utilized=under_utilized,
+        unassigned=unassigned,
     )
 
     count_stmt = select(func.count()).select_from(Resource)
