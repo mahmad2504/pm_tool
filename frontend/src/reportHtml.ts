@@ -227,9 +227,11 @@ function groupResourceNote(
   group: ReportGroup,
   key: string,
   shareProjects: Record<string, string[]>,
+  hideCrossGroupNotes = false,
 ): string {
-  const shared = group.shared_with_other_groups;
   if (group.resources.length === 0) return "None assigned";
+  if (hideCrossGroupNotes) return "";
+  const shared = group.shared_with_other_groups;
   if (shared.length === 0) return "No sharing across groups";
   const projects = sharedProjectLink(
     outsideProjectLabels(shared, group.name),
@@ -317,7 +319,13 @@ function projectTableRows(
     .join("");
 }
 
-export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: string): string {
+export function buildProjectReportHtml(
+  groups: ReportGroup[],
+  filterLabel: string,
+  options?: { title?: string; hideCrossGroupNotes?: boolean },
+): string {
+  const title = options?.title?.trim() || "Project report";
+  const hideCrossGroupNotes = options?.hideCrossGroupNotes === true;
   const generated = formatUpdated(new Date().toISOString());
   const resources: Record<string, ReportSharedResource[]> = {};
   const shared: Record<string, ReportSharedResource[]> = {};
@@ -332,13 +340,15 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
       const tone = toneForGroup(group.name, index);
       const key = `group-${group.id ?? "none"}`;
       resources[key] = group.resources;
-      shared[`${key}-other`] = group.shared_with_other_groups;
-      unique[key] = uniquePeople(group.resources, group.shared_with_other_groups);
+      if (!hideCrossGroupNotes) {
+        shared[`${key}-other`] = group.shared_with_other_groups;
+        unique[key] = uniquePeople(group.resources, group.shared_with_other_groups);
+      }
       return `<tr class="row-${tone}">
             <td><span class="tag ${tone}">${escapeHtml(group.name)}</span></td>
             <td class="num">${group.project_count}</td>
             <td class="num">${countCell(group.resources.length, "resources", key, group.name)}</td>
-            <td class="notes">${groupResourceNote(group, key, shareProjects)}</td>
+            <td class="notes">${groupResourceNote(group, key, shareProjects, hideCrossGroupNotes)}</td>
           </tr>`;
     })
     .join("");
@@ -398,7 +408,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Project report</title>
+  <title>${escapeHtml(title)}</title>
   <style>
     :root {
       --ink: #1c2430;
@@ -782,7 +792,7 @@ export function buildProjectReportHtml(groups: ReportGroup[], filterLabel: strin
     <header>
       <button class="print" type="button" onclick="window.print()">Print</button>
       <p>PM Tool · Management briefing</p>
-      <h1>Project report</h1>
+      <h1>${escapeHtml(title)}</h1>
       <p class="sub">${escapeHtml(filterLabel)}. Generated ${escapeHtml(generated)}.</p>
     </header>
     <div class="body">

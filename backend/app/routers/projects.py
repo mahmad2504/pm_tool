@@ -476,12 +476,74 @@ def _listed_people(
     return listed
 
 
+def _clip_person(person: ReportSharedResource, allowed_ids: set[int]) -> ReportSharedResource:
+    kept = [item for item in person.assignments if item.project_id in allowed_ids]
+    return person.model_copy(update={"assignments": kept})
+
+
+def _shared_within_group(
+    people: list[ReportSharedResource], allowed_ids: set[int], home_ids: set[int]
+) -> list[ReportSharedResource]:
+    """People on this project who also appear on another project in the same group."""
+    shared: list[ReportSharedResource] = []
+    for person in people:
+        clipped = _clip_person(person, allowed_ids)
+        if any(item.project_id not in home_ids for item in clipped.assignments):
+            shared.append(clipped)
+    shared.sort(key=lambda item: item.name.lower())
+    return shared
+
+
+def _isolate_group(group: ReportGroup) -> ReportGroup:
+    """Drop assignments and sharing that point at projects outside this group."""
+    allowed = {project.id for project in group.projects}
+    for project in group.projects:
+        allowed.update(sub.id for sub in project.sub_projects)
+
+    def clip_list(people: list[ReportSharedResource]) -> list[ReportSharedResource]:
+        return [_clip_person(person, allowed) for person in people]
+
+    projects: list[ReportProject] = []
+    for project in group.projects:
+        home = {project.id, *(sub.id for sub in project.sub_projects)}
+        subs = [
+            sub.model_copy(
+                update={
+                    "resources": clip_list(sub.resources),
+                    "shared_resources": _shared_within_group(
+                        sub.shared_resources, allowed, {sub.id}
+                    ),
+                }
+            )
+            for sub in project.sub_projects
+        ]
+        projects.append(
+            project.model_copy(
+                update={
+                    "resources": clip_list(project.resources),
+                    "shared_resources": _shared_within_group(
+                        project.shared_resources, allowed, home
+                    ),
+                    "sub_projects": subs,
+                }
+            )
+        )
+    return group.model_copy(
+        update={
+            "resources": clip_list(group.resources),
+            "shared_with_other_groups": [],
+            "projects": projects,
+        }
+    )
+
+
 @router.get("/report", response_model=ProjectReportResponse)
 def project_report(
     db: DbSession,
     q: str | None = None,
     group_id: int | None = None,
     tag_id: int | None = None,
+    isolate_groups: bool = False,
 ) -> ProjectReportResponse:
     """Root projects for the current filter, excluding completed projects and their assignments."""
     roots = [
@@ -646,6 +708,8 @@ def project_report(
                 projects=[project for _entry_ids, project in entries],
             )
         )
+    if isolate_groups:
+        groups = [_isolate_group(group) for group in groups]
     return ProjectReportResponse(groups=groups)
 
 

@@ -24,6 +24,7 @@ import { ProjectStatusSelect } from "../components/ProjectStatusBadge";
 import { PeopleNameHover, SubProjectPeopleHint } from "../components/SubProjectPeopleHint";
 import { TagChips, TagEditor, tagsWithDraft } from "../components/TagEditor";
 import { AppShell } from "../layout/AppShell";
+import { groupReportPath } from "./GroupReportPage";
 import { projectReportPath } from "./ReportPage";
 import { formatUpdated } from "../reportHtml";
 
@@ -441,6 +442,9 @@ export function ProjectsPage() {
           </select>
           <Link className="btn btn--secondary" to={projectReportPath(search, groupFilter, tagFilter)}>
             Report
+          </Link>
+          <Link className="btn btn--secondary" to={groupReportPath(search, groupFilter, tagFilter)}>
+            Group reports
           </Link>
           <button
             type="button"

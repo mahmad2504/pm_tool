@@ -696,6 +696,81 @@ def test_project_report_omits_completed_projects_and_assignments(client, db_sess
     assert project["shared_resources"] == []
 
 
+def _assignment_names(people):
+    names = []
+    for person in people:
+        for item in person["assignments"]:
+            names.append(item["project_name"])
+            if item.get("group_name"):
+                names.append(item["group_name"])
+    return names
+
+
+def test_isolated_group_report_drops_cross_group_sharing(client):
+    alpha = create_root(client, name="Alpha", group_name="Platform").json()
+    sibling = create_root(client, name="Sibling", group_name="Platform").json()
+    beta = create_root(client, name="Beta", group_name="Remote").json()
+    ada = client.post(
+        "/api/resources",
+        json={"name": "Ada", "role": "software_engineer", "email": "ada@example.com"},
+    ).json()
+    bea = client.post(
+        "/api/resources",
+        json={"name": "Bea", "role": "lead", "email": "bea@example.com"},
+    ).json()
+    for project_id, resource_id in (
+        (alpha["id"], ada["id"]),
+        (sibling["id"], ada["id"]),
+        (beta["id"], ada["id"]),
+        (alpha["id"], bea["id"]),
+    ):
+        assert (
+            client.post(
+                f"/api/projects/{project_id}/resources",
+                json={"resource_id": resource_id, "utilization_percent": 40},
+            ).status_code
+            == 201
+        )
+
+    full = client.get("/api/projects/report")
+    assert full.status_code == 200
+    full_groups = {group["name"]: group for group in full.json()["groups"]}
+    platform_shared = full_groups["Platform"]["shared_with_other_groups"]
+    assert [person["name"] for person in platform_shared] == ["Ada"]
+    assert "Beta" in _assignment_names(platform_shared)
+    assert "Remote" in _assignment_names(platform_shared)
+
+    isolated = client.get("/api/projects/report", params={"isolate_groups": True})
+    assert isolated.status_code == 200
+    groups = {group["name"]: group for group in isolated.json()["groups"]}
+    platform = groups["Platform"]
+    remote = groups["Remote"]
+    assert platform["shared_with_other_groups"] == []
+    assert remote["shared_with_other_groups"] == []
+    assert [person["name"] for person in platform["resources"]] == ["Ada", "Bea"]
+    assert [person["name"] for person in remote["resources"]] == ["Ada"]
+
+    projects = {project["name"]: project for project in platform["projects"]}
+    assert [person["name"] for person in projects["Alpha"]["shared_resources"]] == ["Ada"]
+    assert [person["name"] for person in projects["Sibling"]["shared_resources"]] == ["Ada"]
+    alpha_shared = _assignment_names(projects["Alpha"]["shared_resources"])
+    assert "Sibling" in alpha_shared
+    assert "Beta" not in alpha_shared
+    assert "Remote" not in alpha_shared
+    assert "Beta" not in _assignment_names(projects["Alpha"]["resources"])
+    assert "Remote" not in _assignment_names(platform["resources"])
+    remote_project = remote["projects"][0]
+    assert [item["project_name"] for item in remote_project["resources"][0]["assignments"]] == ["Beta"]
+    assert remote_project["shared_resources"] == []
+    platform_slice = next(group for group in isolated.json()["groups"] if group["name"] == "Platform")
+    assert "Beta" not in str(platform_slice)
+    assert "Remote" not in str(platform_slice)
+    remote_body = {key: value for key, value in remote.items() if key != "name"}
+    assert "Alpha" not in str(remote_body)
+    assert "Sibling" not in str(remote_body)
+    assert "Platform" not in str(remote_body)
+
+
 def test_sub_project_summary_includes_latest_report_at(client):
     root = create_root(client, name="Parent", group_name="Platform").json()
     reported = client.post(

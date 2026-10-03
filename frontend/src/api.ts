@@ -424,6 +424,17 @@ export function portfolioReportFilename(
   return `portfolio-report ${stamp} ${safe}.html`;
 }
 
+export function groupReportFilename(groupName: string, now = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}-${pad(now.getMinutes())}`;
+  const safe =
+    groupName
+      .replace(/[\\/:*?"<>|]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "group";
+  return `group-report ${stamp} ${safe}.html`;
+}
+
 export function resourceReportFilename(
   filterLabel: string,
   now = new Date(),
@@ -536,11 +547,13 @@ export function projectReport(params?: {
   q?: string;
   group_id?: number;
   tag_id?: number;
+  isolate_groups?: boolean;
 }): Promise<{ groups: ReportGroup[] }> {
   const search = new URLSearchParams();
   if (params?.q) search.set("q", params.q);
   if (params?.group_id) search.set("group_id", String(params.group_id));
   if (params?.tag_id) search.set("tag_id", String(params.tag_id));
+  if (params?.isolate_groups) search.set("isolate_groups", "true");
   const query = search.toString();
   return request(`/api/projects/report${query ? `?${query}` : ""}`);
 }
