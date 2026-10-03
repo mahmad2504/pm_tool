@@ -2,18 +2,22 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, aliased
 
 from app.models import Group, Project, ProjectResource
+from app.roles import ProjectLifecycle
 from app.schemas.resources import ResourceProjectAssignment
 
 
 def assignments_by_resource_ids(
-    db: Session, resource_ids: list[int]
+    db: Session,
+    resource_ids: list[int],
+    *,
+    exclude_completed: bool = True,
 ) -> dict[int, list[ResourceProjectAssignment]]:
     if not resource_ids:
         return {}
 
     Root = aliased(Project)
     Parent = aliased(Project)
-    rows = db.execute(
+    stmt = (
         select(
             ProjectResource.resource_id,
             Project.id,
@@ -30,7 +34,13 @@ def assignments_by_resource_ids(
         .outerjoin(Group, Root.group_id == Group.id)
         .where(ProjectResource.resource_id.in_(resource_ids))
         .order_by(Project.name)
-    ).all()
+    )
+    if exclude_completed:
+        stmt = stmt.where(
+            Project.status != ProjectLifecycle.completed.value,
+            Root.status != ProjectLifecycle.completed.value,
+        )
+    rows = db.execute(stmt).all()
 
     result: dict[int, list[ResourceProjectAssignment]] = {rid: [] for rid in resource_ids}
     for (

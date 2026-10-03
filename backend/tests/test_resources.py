@@ -103,6 +103,28 @@ def test_delete(client):
     assert client.get(f"/api/resources/{created['id']}").status_code == 404
 
 
+def test_delete_rejected_when_only_completed_assignment(client):
+    created = create_resource(client).json()
+    finished = client.post(
+        "/api/projects",
+        json={"name": "Finished", "group_name": "Archive", "status": "completed"},
+    ).json()
+    attach = client.post(
+        f"/api/projects/{finished['id']}/resources",
+        json={"resource_id": created["id"]},
+    )
+    assert attach.status_code == 201
+
+    detail = client.get(f"/api/resources/{created['id']}").json()
+    assert detail["total_utilization_percent"] == 0
+    assert detail["project_assignments"] == []
+
+    del_resp = client.delete(f"/api/resources/{created['id']}")
+    assert del_resp.status_code == 409
+    assert del_resp.json()["detail"] == "Cannot delete Ada Lovelace. Assigned to: Finished"
+    assert client.get(f"/api/resources/{created['id']}").status_code == 200
+
+
 def test_delete_rejected_when_assigned(client):
     created = create_resource(client).json()
     root = client.post(
@@ -264,6 +286,60 @@ def test_over_utilized_resources(client, db_session):
     assert cleared["total"] == 0
 
 
+def test_completed_projects_omitted_from_utilization(client):
+    ada = create_resource(client, name="Ada", email="ada@example.com").json()
+    grace = create_resource(client, name="Grace", email="grace@example.com").json()
+
+    active = client.post(
+        "/api/projects",
+        json={"name": "Active", "group_name": "Platform", "status": "in_progress"},
+    ).json()
+    closing = client.post(
+        "/api/projects",
+        json={"name": "Closing", "group_name": "Platform", "status": "closing"},
+    ).json()
+    finished = client.post(
+        "/api/projects",
+        json={"name": "Finished", "group_name": "Archive", "status": "completed"},
+    ).json()
+    retired = client.post(
+        f"/api/projects/{active['id']}/sub-projects",
+        json={"name": "Retired", "status": "completed"},
+    ).json()
+    leftover = client.post(
+        f"/api/projects/{finished['id']}/sub-projects",
+        json={"name": "Leftover", "status": "in_progress"},
+    ).json()
+
+    def assign(project_id: int, resource_id: int, percent: int) -> None:
+        attached = client.post(
+            f"/api/projects/{project_id}/resources",
+            json={"resource_id": resource_id, "utilization_percent": percent},
+        )
+        assert attached.status_code == 201
+
+    assign(active["id"], ada["id"], 60)
+    assign(finished["id"], ada["id"], 50)
+    assign(retired["id"], ada["id"], 40)
+    assign(leftover["id"], ada["id"], 30)
+    assign(active["id"], grace["id"], 60)
+    assign(closing["id"], grace["id"], 50)
+
+    detail = client.get(f"/api/resources/{ada['id']}").json()
+    assert detail["total_utilization_percent"] == 60
+    assert [item["project_name"] for item in detail["project_assignments"]] == ["Active"]
+
+    over = client.get("/api/resources", params={"over_utilized": True}).json()
+    assert over["total"] == 1
+    grace_row = over["items"][0]
+    assert grace_row["email"] == "grace@example.com"
+    assert grace_row["total_utilization_percent"] == 110
+    assert [item["project_name"] for item in grace_row["project_assignments"]] == [
+        "Active",
+        "Closing",
+    ]
+
+
 def test_resource_report(client):
     ada = create_resource(
         client, name="Ada", email="ada@example.com", role="software_engineer"
@@ -345,8 +421,8 @@ def test_resource_report(client):
     assert design_assignment["onboarded"] is False
 
     grace_row = body["items"][1]
-    assert grace_row["total_utilization_percent"] == 100
-    assert grace_row["project_assignments"][0]["project_name"] == "Beta"
+    assert grace_row["total_utilization_percent"] == 0
+    assert grace_row["project_assignments"] == []
 
     zoe_row = body["items"][2]
     assert zoe_row["total_utilization_percent"] == 0

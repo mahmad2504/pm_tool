@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, Up
 from fastapi.responses import PlainTextResponse
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.database import get_db
 from app.locations import ResourceLocation
-from app.models import ProjectResource, Resource, utc_now
+from app.models import Project, ProjectResource, Resource, utc_now
 from app.services.projects import get_project_or_404
-from app.roles import ResourceRole, roles_for_api
+from app.roles import ProjectLifecycle, ResourceRole, roles_for_api
 from app.schemas import (
     CsvRowInput,
     ImportResult,
@@ -72,8 +72,15 @@ def resource_list_filters(
         )
         filters.append(Resource.id.in_(assigned_ids))
     if over_utilized:
+        Root = aliased(Project)
         over_ids = (
             select(ProjectResource.resource_id)
+            .join(Project, ProjectResource.project_id == Project.id)
+            .join(Root, Project.root_project_id == Root.id)
+            .where(
+                Project.status != ProjectLifecycle.completed.value,
+                Root.status != ProjectLifecycle.completed.value,
+            )
             .group_by(ProjectResource.resource_id)
             .having(func.sum(ProjectResource.utilization_percent) > 100)
         )
@@ -386,7 +393,9 @@ def _assignment_label(project_name: str, parent_name: str | None) -> str:
 @router.delete("/{resource_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_resource(resource_id: int, db: DbSession) -> None:
     resource = get_resource_or_404(db, resource_id)
-    assignments = assignments_by_resource_ids(db, [resource.id]).get(resource.id, [])
+    assignments = assignments_by_resource_ids(
+        db, [resource.id], exclude_completed=False
+    ).get(resource.id, [])
     if assignments:
         names = ", ".join(
             _assignment_label(item.project_name, item.parent_name) for item in assignments
